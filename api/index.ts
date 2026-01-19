@@ -341,39 +341,90 @@ app.post('/api/admin/cleanup-duplicates', asyncHandler(async (req, res) => {
 // Force schema creation and seeding (admin endpoint)
 app.post('/api/admin/init-db', asyncHandler(async (req, res) => {
   console.log('Manually initializing database...');
-  const { initDb, executeRaw, query } = await import('../src/db/db-adapter.js');
+  const { initDb, query } = await import('../src/db/db-adapter.js');
   const { postgresSchema, postgresDataSources, postgresKeywords } = await import('../src/db/schema-postgres.js');
+  const { createClient } = await import('@libsql/client');
   
   try {
-    await initDb();
+    // Connect directly to Turso
+    const client = createClient({
+      url: process.env.TURSO_DATABASE_URL!,
+      authToken: process.env.TURSO_AUTH_TOKEN,
+    });
     
-    // Create schema
-    console.log('Creating schema...');
-    await executeRaw(postgresSchema);
+    // Split schema into individual statements
+    const schemaStatements = postgresSchema
+      .split(';')
+      .map(s => s.trim())
+      .filter(s => s.length > 0 && !s.startsWith('--'));
     
-    // Check if already seeded
-    let count = 0;
+    console.log(`Executing ${schemaStatements.length} schema statements...`);
+    
+    const results: string[] = [];
+    for (let i = 0; i < schemaStatements.length; i++) {
+      const stmt = schemaStatements[i];
+      try {
+        await client.execute(stmt);
+        results.push(`Statement ${i + 1}: OK`);
+      } catch (err: any) {
+        results.push(`Statement ${i + 1}: ERROR - ${err.message}`);
+      }
+    }
+    
+    // Check tables now
+    const tables = await client.execute("SELECT name FROM sqlite_master WHERE type='table'");
+    
+    // Seed data sources if table exists and is empty
+    let dsCount = 0;
     try {
-      const result = await query('SELECT COUNT(*) as count FROM data_sources');
-      count = result[0]?.count || 0;
+      const countResult = await client.execute('SELECT COUNT(*) as count FROM data_sources');
+      dsCount = Number(countResult.rows[0]?.count) || 0;
     } catch (e) {
-      // Table might not exist yet
+      // Ignore
     }
     
-    if (count === 0) {
+    if (dsCount === 0) {
       console.log('Seeding data sources...');
-      await executeRaw(postgresDataSources);
-      console.log('Seeding keywords...');
-      await executeRaw(postgresKeywords);
+      const seedStatements = postgresDataSources
+        .split(';')
+        .map(s => s.trim())
+        .filter(s => s.length > 0 && !s.startsWith('--'));
+      
+      for (const stmt of seedStatements) {
+        try {
+          await client.execute(stmt);
+          results.push('Data sources seeded: OK');
+        } catch (err: any) {
+          results.push(`Data sources seed: ERROR - ${err.message}`);
+        }
+      }
+      
+      // Keywords
+      const keywordStatements = postgresKeywords
+        .split(';')
+        .map(s => s.trim())
+        .filter(s => s.length > 0 && !s.startsWith('--'));
+      
+      for (const stmt of keywordStatements) {
+        try {
+          await client.execute(stmt);
+          results.push('Keywords seeded: OK');
+        } catch (err: any) {
+          results.push(`Keywords seed: ERROR - ${err.message}`);
+        }
+      }
     }
     
-    // Verify
-    const sources = await query('SELECT * FROM data_sources');
+    // Final check
+    const finalCount = await client.execute('SELECT COUNT(*) as count FROM data_sources');
+    const sources = await client.execute('SELECT * FROM data_sources');
     
     res.json({ 
-      message: 'Database initialized successfully',
-      dataSourcesCount: sources.length,
-      dataSources: sources
+      message: 'Database initialized',
+      executionResults: results,
+      tables: tables.rows.map((r: any) => r.name),
+      dataSourcesCount: Number(finalCount.rows[0]?.count),
+      dataSources: sources.rows
     });
   } catch (error: any) {
     console.error('Init error:', error);
