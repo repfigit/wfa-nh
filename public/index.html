@@ -1,0 +1,1616 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NH Childcare Payments Tracker</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root {
+      --primary: #1a365d;
+      --primary-light: #2c5282;
+      --secondary: #718096;
+      --success: #38a169;
+      --warning: #d69e2e;
+      --danger: #e53e3e;
+      --critical: #9b2c2c;
+      --bg: #f7fafc;
+      --card-bg: #ffffff;
+      --text: #2d3748;
+      --text-light: #718096;
+      --border: #e2e8f0;
+    }
+    
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+    
+    header {
+      background: var(--primary);
+      color: white;
+      padding: 1rem 2rem;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    header h1 { font-size: 1.5rem; font-weight: 600; }
+    header p { opacity: 0.9; font-size: 0.875rem; }
+    
+    .header-subtitle {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-top: 0.25rem;
+    }
+    
+    .header-badge {
+      background: var(--danger);
+      padding: 0.15rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    
+    nav {
+      background: var(--primary-light);
+      padding: 0.5rem 2rem;
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    
+    nav a {
+      color: white;
+      text-decoration: none;
+      padding: 0.5rem 1rem;
+      border-radius: 4px;
+      font-size: 0.875rem;
+      transition: background 0.2s;
+    }
+    
+    nav a:hover, nav a.active { background: rgba(255,255,255,0.2); }
+    
+    main { max-width: 1400px; margin: 0 auto; padding: 2rem; }
+    
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+    
+    .stat-card {
+      background: var(--card-bg);
+      padding: 1.25rem;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    
+    .stat-card h3 {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      color: var(--text-light);
+      margin-bottom: 0.5rem;
+      letter-spacing: 0.5px;
+    }
+    
+    .stat-card .value { font-size: 1.75rem; font-weight: 700; color: var(--primary); }
+    .stat-card.warning .value { color: var(--warning); }
+    .stat-card.danger .value { color: var(--danger); }
+    .stat-card.highlight { border-left: 4px solid var(--danger); }
+    
+    .card {
+      background: var(--card-bg);
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      margin-bottom: 1.5rem;
+    }
+    
+    .card-header {
+      padding: 1rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+    
+    .card-header h2 { font-size: 1.125rem; font-weight: 600; }
+    .card-body { padding: 1.5rem; }
+    
+    .charts-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 2rem;
+    }
+    
+    .chart-container { position: relative; height: 250px; }
+    
+    table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+    th, td { text-align: left; padding: 0.75rem; border-bottom: 1px solid var(--border); }
+    th { font-size: 0.7rem; text-transform: uppercase; color: var(--text-light); font-weight: 600; }
+    tr:hover { background: var(--bg); }
+    
+    .badge {
+      display: inline-block;
+      padding: 0.2rem 0.5rem;
+      border-radius: 9999px;
+      font-size: 0.7rem;
+      font-weight: 500;
+    }
+    
+    .badge-low { background: #c6f6d5; color: #276749; }
+    .badge-medium { background: #fefcbf; color: #975a16; }
+    .badge-high { background: #fed7d7; color: #c53030; }
+    .badge-critical { background: #9b2c2c; color: white; }
+    .badge-open { background: #bee3f8; color: #2c5282; }
+    .badge-investigating { background: #fefcbf; color: #975a16; }
+    .badge-resolved { background: #c6f6d5; color: #276749; }
+    .badge-dismissed { background: #e2e8f0; color: #4a5568; }
+    .badge-immigrant { background: #805ad5; color: white; }
+    .badge-ccdf { background: #2c5282; color: white; }
+    
+    .amount { font-family: 'SF Mono', Monaco, Consolas, monospace; font-weight: 500; }
+    
+    .search-box { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+    .search-box input, .search-box select {
+      padding: 0.6rem 0.75rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 0.875rem;
+    }
+    .search-box input { flex: 1; min-width: 200px; }
+    
+    .btn {
+      padding: 0.6rem 1rem;
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.875rem;
+      transition: background 0.2s;
+    }
+    .btn:hover { background: var(--primary-light); }
+    .btn-sm { padding: 0.4rem 0.75rem; font-size: 0.75rem; }
+    .btn-outline {
+      background: transparent;
+      border: 1px solid var(--primary);
+      color: var(--primary);
+    }
+    .btn-outline:hover { background: var(--primary); color: white; }
+    
+    .fraud-summary { display: flex; gap: 0.5rem; margin-top: 0.5rem; flex-wrap: wrap; }
+    .fraud-count { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.8rem; }
+    
+    .data-sources {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1rem;
+    }
+    
+    .source-card {
+      background: var(--bg);
+      padding: 1rem;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+    }
+    .source-card h4 { font-size: 0.875rem; margin-bottom: 0.5rem; }
+    .source-card a { color: var(--primary); font-size: 0.75rem; word-break: break-all; }
+    
+    .loading { text-align: center; padding: 2rem; color: var(--text-light); }
+    .error { background: #fed7d7; color: #c53030; padding: 1rem; border-radius: 6px; margin-bottom: 1rem; }
+    
+    .view { display: none; }
+    .view.active { display: block; }
+    
+    .clickable { cursor: pointer; color: var(--primary); }
+    .clickable:hover { text-decoration: underline; }
+    
+    .flag-icon { color: var(--danger); margin-right: 0.25rem; }
+    .warning-icon { color: var(--warning); }
+    
+    .capacity-warning { 
+      background: #fed7d7; 
+      color: #c53030; 
+      padding: 0.15rem 0.4rem; 
+      border-radius: 4px; 
+      font-size: 0.75rem;
+      font-weight: 500;
+    }
+    
+    /* Modal */
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.5);
+      z-index: 1000;
+      overflow-y: auto;
+      padding: 2rem;
+    }
+    .modal.active { display: flex; justify-content: center; align-items: flex-start; }
+    .modal-content {
+      background: white;
+      border-radius: 12px;
+      max-width: 900px;
+      width: 100%;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    }
+    .modal-header {
+      padding: 1.25rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      background: white;
+      z-index: 1;
+    }
+    .modal-header h3 { font-size: 1.125rem; }
+    .modal-close {
+      background: none;
+      border: none;
+      font-size: 1.5rem;
+      cursor: pointer;
+      color: var(--text-light);
+      line-height: 1;
+    }
+    .modal-close:hover { color: var(--text); }
+    .modal-body { padding: 1.5rem; }
+    
+    .detail-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .detail-item label {
+      display: block;
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      color: var(--text-light);
+      margin-bottom: 0.25rem;
+    }
+    .detail-item .value { font-weight: 500; }
+    
+    .alert-box {
+      background: #fef5e7;
+      border: 1px solid #d69e2e;
+      border-radius: 6px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+    }
+    .alert-box.danger {
+      background: #fed7d7;
+      border-color: #c53030;
+    }
+    .alert-box h4 { 
+      font-size: 0.875rem; 
+      color: var(--warning);
+      margin-bottom: 0.5rem;
+    }
+    .alert-box.danger h4 { color: var(--danger); }
+    
+    footer {
+      text-align: center;
+      padding: 2rem;
+      color: var(--text-light);
+      font-size: 0.875rem;
+    }
+    footer a { color: var(--primary); }
+    
+    @media (max-width: 768px) {
+      main { padding: 1rem; }
+      .stats-grid { grid-template-columns: repeat(2, 1fr); }
+      .charts-grid { grid-template-columns: 1fr; }
+      table { font-size: 0.75rem; }
+      th, td { padding: 0.5rem; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>NH Childcare Payments Tracker</h1>
+    <div class="header-subtitle">
+      <span>CCDF Scholarship Payments to Daycare Providers</span>
+      <span class="header-badge">CCDF Fraud Watch</span>
+    </div>
+  </header>
+  
+  <nav>
+    <a href="#" class="active" data-view="dashboard">Dashboard</a>
+    <a href="#" data-view="providers">Providers</a>
+    <a href="#" data-view="payments">Payments</a>
+    <a href="#" data-view="fraud">Fraud Indicators</a>
+    <a href="#" data-view="tools">Import & Analysis</a>
+    <a href="#" data-view="sources">Data Sources</a>
+  </nav>
+  
+  <main>
+    <!-- Dashboard View -->
+    <div id="dashboard-view" class="view active">
+      <div class="alert-box">
+        <h4>Federal CCDF Fraud Context</h4>
+        <p style="font-size:0.85rem;">The Trump administration froze CCDF funding in several states (notably Minnesota) due to daycare fraud allegations, particularly involving immigrant-owned daycares. NH receives ~$30M annually in CCDF funds. This tool tracks payments for potential fraud patterns.</p>
+      </div>
+      
+      <div class="stats-grid" id="stats-grid">
+        <div class="loading">Loading statistics...</div>
+      </div>
+      
+      <div class="charts-grid">
+        <div class="card">
+          <div class="card-header"><h2>Payments by City</h2></div>
+          <div class="card-body">
+            <div class="chart-container"><canvas id="cityChart"></canvas></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h2>Fraud Indicators by Type</h2></div>
+          <div class="card-body">
+            <div class="chart-container"><canvas id="fraudChart"></canvas></div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="card">
+        <div class="card-header">
+          <h2>Top Providers by CCDF Payments</h2>
+          <button class="btn btn-sm btn-outline" onclick="exportData('providers')">Export CSV</button>
+        </div>
+        <div class="card-body">
+          <table id="top-providers">
+            <thead>
+              <tr>
+                <th>Provider</th>
+                <th>City</th>
+                <th>Type</th>
+                <th>Capacity</th>
+                <th>Max Children</th>
+                <th>Total Payments</th>
+                <th>Flags</th>
+              </tr>
+            </thead>
+            <tbody><tr><td colspan="7" class="loading">Loading...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+      
+      <div class="card">
+        <div class="card-header"><h2>Recent Payments</h2></div>
+        <div class="card-body">
+          <table id="recent-payments">
+            <thead>
+              <tr>
+                <th>Provider</th>
+                <th>Month</th>
+                <th>Amount</th>
+                <th>Children</th>
+                <th>$/Child</th>
+                <th>Capacity</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody><tr><td colspan="7" class="loading">Loading...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Providers View -->
+    <div id="providers-view" class="view">
+      <div class="search-box">
+        <input type="text" id="provider-search" placeholder="Search providers..." onkeyup="if(event.key==='Enter')searchProviders()">
+        <select id="provider-filter">
+          <option value="">All Providers</option>
+          <option value="immigrant">Immigrant-Owned Only</option>
+        </select>
+        <button class="btn" onclick="searchProviders()">Search</button>
+        <button class="btn btn-outline" onclick="exportData('providers')">Export</button>
+      </div>
+      
+      <div class="card">
+        <div class="card-header"><h2>Childcare Providers</h2></div>
+        <div class="card-body" style="overflow-x:auto;">
+          <table id="providers-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Owner</th>
+                <th>City</th>
+                <th>Type</th>
+                <th>Capacity</th>
+                <th>Languages</th>
+                <th>Total Payments</th>
+                <th>Flags</th>
+              </tr>
+            </thead>
+            <tbody><tr><td colspan="8" class="loading">Loading...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Payments View -->
+    <div id="payments-view" class="view">
+      <div class="search-box">
+        <select id="payment-year-filter" onchange="loadPayments()">
+          <option value="">All Years</option>
+          <option value="2024">FY 2024</option>
+          <option value="2023">FY 2023</option>
+        </select>
+        <button class="btn btn-outline" onclick="exportData('payments')">Export CSV</button>
+      </div>
+      
+      <div class="card">
+        <div class="card-header"><h2>CCDF Scholarship Payments</h2></div>
+        <div class="card-body" style="overflow-x:auto;">
+          <table id="payments-table">
+            <thead>
+              <tr>
+                <th>Provider</th>
+                <th>Immigrant?</th>
+                <th>FY</th>
+                <th>Month</th>
+                <th>Amount</th>
+                <th>Children</th>
+                <th>$/Child</th>
+                <th>Funding</th>
+              </tr>
+            </thead>
+            <tbody><tr><td colspan="8" class="loading">Loading...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Fraud Indicators View -->
+    <div id="fraud-view" class="view">
+      <div class="alert-box danger">
+        <h4>CCDF Fraud Patterns Being Tracked</h4>
+        <ul style="font-size:0.85rem;margin-left:1.5rem;">
+          <li><strong>Over-capacity billing</strong> - Billing for more children than licensed capacity</li>
+          <li><strong>Rapid payment growth</strong> - Suspicious increases (e.g., 500%+ in 6 months)</li>
+          <li><strong>High payment rates</strong> - Unusually high $/child/month</li>
+          <li><strong>Review recommended</strong> - Immigrant-owned providers with significant payments (for compliance review)</li>
+        </ul>
+      </div>
+      
+      <div class="card">
+        <div class="card-header">
+          <h2>Fraud Indicators</h2>
+          <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+            <select id="fraud-severity-filter" onchange="loadFraudIndicators()">
+              <option value="">All Severities</option>
+              <option value="critical">Critical</option>
+              <option value="high">High</option>
+              <option value="medium">Medium</option>
+              <option value="low">Low</option>
+            </select>
+            <select id="fraud-status-filter" onchange="loadFraudIndicators()">
+              <option value="">All Statuses</option>
+              <option value="open">Open</option>
+              <option value="investigating">Investigating</option>
+              <option value="resolved">Resolved</option>
+              <option value="dismissed">Dismissed</option>
+            </select>
+            <button class="btn btn-sm btn-outline" onclick="exportData('fraud')">Export</button>
+          </div>
+        </div>
+        <div class="card-body" style="overflow-x:auto;">
+          <table id="fraud-table">
+            <thead>
+              <tr>
+                <th>Severity</th>
+                <th>Type</th>
+                <th>Description</th>
+                <th>Evidence</th>
+                <th>Provider</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody><tr><td colspan="6" class="loading">Loading...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Import & Analysis Tools View -->
+    <div id="tools-view" class="view">
+      <div class="alert-box">
+        <h4>Data Integration Tools</h4>
+        <p style="font-size:0.85rem;">Import data from TransparentNH, scrape NH DAS contracts, and run fraud analysis. All data integrates into the common database.</p>
+      </div>
+      
+      <!-- CSV Import -->
+      <div class="card">
+        <div class="card-header">
+          <h2>Import TransparentNH CSV</h2>
+        </div>
+        <div class="card-body">
+          <p style="margin-bottom:1rem;color:var(--text-light);">
+            Upload a CSV export from <a href="https://business.nh.gov/ExpenditureTransparency/" target="_blank">TransparentNH Expenditure Register</a>. 
+            The importer will normalize column names and match vendors to existing providers.
+          </p>
+          <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:center;margin-bottom:1rem;">
+            <input type="file" id="csv-file" accept=".csv" style="flex:1;min-width:200px;">
+            <label style="display:flex;align-items:center;gap:0.5rem;">
+              <input type="checkbox" id="filter-childcare" checked>
+              Filter to childcare only
+            </label>
+            <label style="display:flex;align-items:center;gap:0.5rem;">
+              <input type="checkbox" id="create-providers">
+              Auto-create providers
+            </label>
+            <button class="btn" onclick="importCSV()">Import CSV</button>
+          </div>
+          <div id="import-result" style="display:none;"></div>
+        </div>
+      </div>
+      
+      <!-- TransparentNH Auto-Scraper -->
+      <div class="card">
+        <div class="card-header">
+          <h2>Scrape TransparentNH Expenditures</h2>
+        </div>
+        <div class="card-body">
+          <p style="margin-bottom:1rem;color:var(--text-light);">
+            Automatically download and import official expenditure data from 
+            <a href="https://www.nh.gov/transparentnh/where-the-money-goes/fiscal-yr-downloads.htm" target="_blank">TransparentNH Fiscal Year Downloads</a>. 
+            Filters for childcare-related payments and DHHS expenditures.
+          </p>
+          <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:center;margin-bottom:1rem;">
+            <select id="fiscal-year-select" style="padding:0.6rem;min-width:150px;">
+              <option value="">Loading years...</option>
+            </select>
+            <button class="btn" onclick="scrapeTransparentNH()">Scrape Selected Year</button>
+            <button class="btn btn-outline" onclick="scrapeRecentYears()">Scrape Recent Years (3)</button>
+          </div>
+          <div id="transparent-nh-result" style="display:none;"></div>
+        </div>
+      </div>
+      
+      <!-- NH DAS Scraper -->
+      <div class="card">
+        <div class="card-header">
+          <h2>Scrape NH DAS Contracts</h2>
+        </div>
+        <div class="card-body">
+          <p style="margin-bottom:1rem;color:var(--text-light);">
+            Search the <a href="https://apps.das.nh.gov/bidscontracts/contracts.aspx" target="_blank">NH DAS Bids & Contracts</a> site for childcare-related contracts.
+          </p>
+          <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem;">
+            <input type="text" id="scrape-keyword" placeholder="Search keyword (e.g., daycare)" value="daycare" style="flex:1;min-width:200px;padding:0.6rem;">
+            <button class="btn" onclick="scrapeContracts()">Search Keyword</button>
+            <button class="btn btn-outline" onclick="scrapeAllChildcare()">Full Childcare Scrape</button>
+          </div>
+          <div id="scrape-result" style="display:none;"></div>
+        </div>
+      </div>
+      
+      <!-- Fraud Analysis -->
+      <div class="card">
+        <div class="card-header">
+          <h2>Fraud Analysis Tools</h2>
+        </div>
+        <div class="card-body">
+          <p style="margin-bottom:1rem;color:var(--text-light);">
+            Run automated fraud detection algorithms to identify structuring, duplicates, and suspicious patterns.
+          </p>
+          <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem;">
+            <button class="btn" onclick="runFraudAnalysis()">Run Full Analysis</button>
+            <button class="btn btn-outline" onclick="detectStructuring()">Detect Structuring</button>
+            <button class="btn btn-outline" onclick="detectDuplicates()">Find Duplicates</button>
+          </div>
+          <div id="analysis-result" style="display:none;"></div>
+        </div>
+      </div>
+      
+      <!-- Structuring Detection Results -->
+      <div class="card" id="structuring-card" style="display:none;">
+        <div class="card-header">
+          <h2>Structuring Detection Results</h2>
+        </div>
+        <div class="card-body" style="overflow-x:auto;">
+          <table id="structuring-table">
+            <thead>
+              <tr>
+                <th>Type</th>
+                <th>Vendor</th>
+                <th>Total Amount</th>
+                <th>Transactions</th>
+                <th>Details</th>
+                <th>Severity</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+      
+      <!-- Duplicate Detection Results -->
+      <div class="card" id="duplicates-card" style="display:none;">
+        <div class="card-header">
+          <h2>Duplicate Transactions</h2>
+        </div>
+        <div class="card-body" style="overflow-x:auto;">
+          <table id="duplicates-table">
+            <thead>
+              <tr>
+                <th>Vendor</th>
+                <th>Amount</th>
+                <th>Date</th>
+                <th>Count</th>
+                <th>Transaction IDs</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+      
+      <!-- Vendor Concentration -->
+      <div class="card" id="concentration-card" style="display:none;">
+        <div class="card-header">
+          <h2>Vendor Concentration Analysis</h2>
+        </div>
+        <div class="card-body" style="overflow-x:auto;">
+          <table id="concentration-table">
+            <thead>
+              <tr>
+                <th>Vendor</th>
+                <th>Immigrant?</th>
+                <th>Total Amount</th>
+                <th>Transactions</th>
+                <th>Avg Amount</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Data Sources View -->
+    <div id="sources-view" class="view">
+      <div class="card">
+        <div class="card-header"><h2>Data Sources</h2></div>
+        <div class="card-body">
+          <p style="margin-bottom:1rem;color:var(--text-light);">
+            This application aggregates data from official New Hampshire state government sources related to childcare and CCDF payments.
+          </p>
+          <div class="data-sources" id="data-sources-list">
+            <div class="loading">Loading...</div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="card">
+        <div class="card-header"><h2>About CCDF Fraud Detection</h2></div>
+        <div class="card-body">
+          <p>This tool tracks New Hampshire CCDF (Child Care and Development Fund) scholarship payments to daycare providers, with focus on identifying potential fraud patterns similar to those uncovered in Minnesota's daycare fraud investigation.</p>
+          <br>
+          <p><strong>Key Fraud Indicators:</strong></p>
+          <ul style="margin-left:1.5rem;margin-top:0.5rem;">
+            <li><strong>Over-capacity billing</strong> - Provider claims payment for more children than their licensed capacity allows</li>
+            <li><strong>Rapid growth</strong> - Payment amounts increasing dramatically in short time periods</li>
+            <li><strong>High payment rates</strong> - $/child/month significantly above average</li>
+            <li><strong>Attendance irregularities</strong> - Billing hours that don't match realistic patterns</li>
+          </ul>
+          <br>
+          <p><strong>NH CCDF Program Facts:</strong></p>
+          <ul style="margin-left:1.5rem;margin-top:0.5rem;">
+            <li>NH receives approximately $30 million annually in federal CCDF funds</li>
+            <li>~500 providers participate in the scholarship program</li>
+            <li>DHHS administers payments through the Child Care Scholarship Program</li>
+          </ul>
+          <br>
+          <p style="color:var(--text-light);font-style:italic;">
+            Flags indicate areas for potential review, not accusations of wrongdoing. All providers deserve due process.
+          </p>
+        </div>
+      </div>
+    </div>
+  </main>
+  
+  <!-- Provider Detail Modal -->
+  <div id="provider-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="provider-modal-title">Provider Details</h3>
+        <button class="modal-close" onclick="closeModal('provider-modal')">&times;</button>
+      </div>
+      <div class="modal-body" id="provider-modal-body"></div>
+    </div>
+  </div>
+  
+  <footer>
+    <p>Data sourced from official NH state government websites. For research and investigative purposes.</p>
+    <p style="margin-top:0.5rem;">
+      <a href="https://www.nh.gov/transparentnh/" target="_blank">TransparentNH</a> | 
+      <a href="https://www.dhhs.nh.gov/programs-services/childcare-parenting-childbirth/child-care-licensing" target="_blank">NH Child Care Licensing</a> | 
+      <a href="https://www.nh-connections.org/" target="_blank">NH Connections</a>
+    </p>
+  </footer>
+  
+  <script>
+    const API_BASE = '/api';
+    let cityChart, fraudChart;
+    
+    // Navigation
+    document.querySelectorAll('nav a').forEach(link => {
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        showView(e.target.dataset.view);
+      });
+    });
+    
+    // Close modal on outside click
+    document.querySelectorAll('.modal').forEach(modal => {
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) closeModal(modal.id);
+      });
+    });
+    
+    // Close modal on Escape
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        document.querySelectorAll('.modal.active').forEach(m => closeModal(m.id));
+      }
+    });
+    
+    function showView(viewName) {
+      document.querySelectorAll('nav a').forEach(a => a.classList.remove('active'));
+      document.querySelector(`nav a[data-view="${viewName}"]`).classList.add('active');
+      document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+      document.getElementById(`${viewName}-view`).classList.add('active');
+      
+      switch(viewName) {
+        case 'dashboard': loadDashboard(); break;
+        case 'providers': loadProviders(); break;
+        case 'payments': loadPayments(); break;
+        case 'fraud': loadFraudIndicators(); break;
+        case 'tools': loadToolsView(); break;
+        case 'sources': loadDataSources(); break;
+      }
+    }
+    
+    function openModal(id) { document.getElementById(id).classList.add('active'); }
+    function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+    
+    // Formatting
+    function formatCurrency(amount) {
+      if (amount === null || amount === undefined) return '-';
+      return '$' + Number(amount).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    }
+    
+    function formatMonth(year, month) {
+      if (!year || !month) return '-';
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      return `${months[month-1]} ${year}`;
+    }
+    
+    function severityBadge(severity) {
+      return `<span class="badge badge-${severity}">${severity.toUpperCase()}</span>`;
+    }
+    
+    function statusBadge(status) {
+      return `<span class="badge badge-${status}">${status}</span>`;
+    }
+    
+    function capacityStatus(children, capacity) {
+      if (!capacity) return '-';
+      if (children > capacity) {
+        const over = ((children - capacity) / capacity * 100).toFixed(0);
+        return `<span class="capacity-warning">${over}% OVER</span>`;
+      }
+      return `<span style="color:var(--success)">${children}/${capacity}</span>`;
+    }
+    
+    // Dashboard
+    async function loadDashboard() {
+      try {
+        const [dashRes, reportRes] = await Promise.all([
+          fetch(`${API_BASE}/dashboard`),
+          fetch(`${API_BASE}/reports/summary`)
+        ]);
+        const data = await dashRes.json();
+        const report = await reportRes.json();
+        
+        // Stats grid
+        document.getElementById('stats-grid').innerHTML = `
+          <div class="stat-card">
+            <h3>Total Providers</h3>
+            <div class="value">${data.total_providers}</div>
+          </div>
+          <div class="stat-card highlight">
+            <h3>Immigrant-Owned</h3>
+            <div class="value">${data.immigrant_providers}</div>
+          </div>
+          <div class="stat-card">
+            <h3>CCDF Payments</h3>
+            <div class="value">${formatCurrency(data.total_payments)}</div>
+          </div>
+          <div class="stat-card ${data.fraud_indicators_count > 0 ? 'warning' : ''}">
+            <h3>Fraud Flags</h3>
+            <div class="value">${data.fraud_indicators_count}</div>
+            <div class="fraud-summary">
+              ${data.fraud_indicators_by_severity.high ? `<span class="fraud-count">${severityBadge('high')} ${data.fraud_indicators_by_severity.high}</span>` : ''}
+              ${data.fraud_indicators_by_severity.medium ? `<span class="fraud-count">${severityBadge('medium')} ${data.fraud_indicators_by_severity.medium}</span>` : ''}
+            </div>
+          </div>
+        `;
+        
+        // Charts
+        renderCharts(report, data);
+        
+        // Top providers
+        const topBody = document.querySelector('#top-providers tbody');
+        if (data.top_providers.length === 0) {
+          topBody.innerHTML = '<tr><td colspan="7">No providers found</td></tr>';
+        } else {
+          topBody.innerHTML = data.top_providers.map(p => `
+            <tr>
+              <td class="clickable" onclick="showProviderDetail(${p.id})">${p.name}</td>
+              <td>${p.city || '-'}</td>
+              <td>${p.provider_type || '-'}</td>
+              <td>${p.capacity || '-'}</td>
+              <td>${capacityStatus(p.max_children, p.capacity)}</td>
+              <td class="amount">${formatCurrency(p.total_payments)}</td>
+              <td>${p.fraud_count > 0 ? `${severityBadge('medium')} ${p.fraud_count}` : '-'}</td>
+            </tr>
+          `).join('');
+        }
+        
+        // Recent payments
+        const recentBody = document.querySelector('#recent-payments tbody');
+        if (data.recent_payments.length === 0) {
+          recentBody.innerHTML = '<tr><td colspan="7">No payments found</td></tr>';
+        } else {
+          recentBody.innerHTML = data.recent_payments.map(p => {
+            const perChild = p.children_served ? (p.amount / p.children_served).toFixed(0) : '-';
+            return `
+              <tr>
+                <td class="clickable" onclick="showProviderDetail(${p.provider_id})">${p.provider_name}</td>
+                <td>${formatMonth(p.fiscal_year, p.fiscal_month)}</td>
+                <td class="amount">${formatCurrency(p.amount)}</td>
+                <td>${p.children_served || '-'}</td>
+                <td class="amount">${perChild !== '-' ? '$' + perChild : '-'}</td>
+                <td>${p.capacity || '-'}</td>
+                <td>${p.children_served > p.capacity ? '<span class="capacity-warning">OVER CAPACITY</span>' : '<span style="color:var(--success)">OK</span>'}</td>
+              </tr>
+            `;
+          }).join('');
+        }
+      } catch (err) {
+        console.error('Error loading dashboard:', err);
+        document.getElementById('stats-grid').innerHTML = '<div class="error">Error loading data</div>';
+      }
+    }
+    
+    function renderCharts(report, data) {
+      const colors = ['#1a365d', '#2c5282', '#3182ce', '#4299e1', '#63b3ed', '#90cdf4', '#805ad5', '#d53f8c'];
+      
+      // City chart
+      const cityCtx = document.getElementById('cityChart').getContext('2d');
+      if (cityChart) cityChart.destroy();
+      cityChart = new Chart(cityCtx, {
+        type: 'doughnut',
+        data: {
+          labels: report.by_city.slice(0, 6).map(r => r.city || 'Unknown'),
+          datasets: [{
+            data: report.by_city.slice(0, 6).map(r => r.total_payments || 0),
+            backgroundColor: colors
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { 
+            legend: { position: 'right' },
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  return context.label + ': $' + context.parsed.toLocaleString();
+                }
+              }
+            }
+          }
+        }
+      });
+      
+      // Fraud chart
+      const fraudCtx = document.getElementById('fraudChart').getContext('2d');
+      if (fraudChart) fraudChart.destroy();
+      fraudChart = new Chart(fraudCtx, {
+        type: 'bar',
+        data: {
+          labels: report.fraud_by_type.map(r => r.indicator_type.replace(/_/g, ' ')),
+          datasets: [{
+            label: 'Count',
+            data: report.fraud_by_type.map(r => r.count),
+            backgroundColor: '#e53e3e'
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
+        }
+      });
+    }
+    
+    // Providers
+    async function loadProviders() {
+      const tbody = document.querySelector('#providers-table tbody');
+      tbody.innerHTML = '<tr><td colspan="8" class="loading">Loading...</td></tr>';
+      
+      const filter = document.getElementById('provider-filter').value;
+      const query = document.getElementById('provider-search').value;
+      
+      let url = `${API_BASE}/providers?`;
+      if (filter === 'immigrant') url += 'immigrant_owned=true&';
+      if (query) url += `q=${encodeURIComponent(query)}&`;
+      
+      try {
+        const res = await fetch(url);
+        const providers = await res.json();
+        
+        if (providers.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="8">No providers found</td></tr>';
+          return;
+        }
+        
+        tbody.innerHTML = providers.map(p => `
+          <tr>
+            <td class="clickable" onclick="showProviderDetail(${p.id})">
+              ${p.name}
+              ${p.is_immigrant_owned ? '<span class="badge badge-immigrant" style="margin-left:0.5rem">Immigrant</span>' : ''}
+            </td>
+            <td>${p.owner_name || '-'}</td>
+            <td>${p.city || '-'}</td>
+            <td>${p.provider_type || '-'}</td>
+            <td>${p.capacity || '-'}</td>
+            <td style="font-size:0.75rem">${p.language_services || '-'}</td>
+            <td class="amount">${formatCurrency(p.total_payments)}</td>
+            <td>${p.fraud_count > 0 ? `${severityBadge('medium')} ${p.fraud_count}` : '-'}</td>
+          </tr>
+        `).join('');
+      } catch (err) {
+        console.error('Error:', err);
+        tbody.innerHTML = '<tr><td colspan="8" class="error">Error loading providers</td></tr>';
+      }
+    }
+    
+    function searchProviders() { loadProviders(); }
+    
+    // Payments
+    async function loadPayments() {
+      const tbody = document.querySelector('#payments-table tbody');
+      tbody.innerHTML = '<tr><td colspan="8" class="loading">Loading...</td></tr>';
+      
+      const year = document.getElementById('payment-year-filter').value;
+      
+      let url = `${API_BASE}/payments?limit=100`;
+      if (year) url += `&fiscal_year=${year}`;
+      
+      try {
+        const res = await fetch(url);
+        const payments = await res.json();
+        
+        if (payments.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="8">No payments found</td></tr>';
+          return;
+        }
+        
+        tbody.innerHTML = payments.map(p => {
+          const perChild = p.children_served ? (p.amount / p.children_served).toFixed(0) : '-';
+          return `
+            <tr>
+              <td class="clickable" onclick="showProviderDetail(${p.provider_id})">${p.provider_name}</td>
+              <td>${p.is_immigrant_owned ? '<span class="badge badge-immigrant">Yes</span>' : 'No'}</td>
+              <td>${p.fiscal_year || '-'}</td>
+              <td>${formatMonth(p.fiscal_year, p.fiscal_month)}</td>
+              <td class="amount">${formatCurrency(p.amount)}</td>
+              <td>${p.children_served || '-'}</td>
+              <td class="amount">${perChild !== '-' ? '$' + perChild : '-'}</td>
+              <td><span class="badge badge-ccdf">${p.funding_source || 'CCDF'}</span></td>
+            </tr>
+          `;
+        }).join('');
+      } catch (err) {
+        console.error('Error:', err);
+        tbody.innerHTML = '<tr><td colspan="8" class="error">Error loading payments</td></tr>';
+      }
+    }
+    
+    // Fraud Indicators
+    async function loadFraudIndicators() {
+      const tbody = document.querySelector('#fraud-table tbody');
+      tbody.innerHTML = '<tr><td colspan="6" class="loading">Loading...</td></tr>';
+      
+      const severity = document.getElementById('fraud-severity-filter').value;
+      const status = document.getElementById('fraud-status-filter').value;
+      
+      let url = `${API_BASE}/fraud-indicators?`;
+      if (severity) url += `severity=${severity}&`;
+      if (status) url += `status=${status}&`;
+      
+      try {
+        const res = await fetch(url);
+        const indicators = await res.json();
+        
+        if (indicators.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="6">No fraud indicators found</td></tr>';
+          return;
+        }
+        
+        tbody.innerHTML = indicators.map(i => `
+          <tr>
+            <td>${severityBadge(i.severity)}</td>
+            <td>${i.indicator_type.replace(/_/g, ' ')}</td>
+            <td style="max-width:300px">${i.description}</td>
+            <td style="max-width:200px;font-size:0.75rem;color:var(--text-light)">${i.evidence || '-'}</td>
+            <td class="clickable" onclick="showProviderDetail(${i.provider_id})">${i.provider_name || '-'}</td>
+            <td>${statusBadge(i.status)}</td>
+          </tr>
+        `).join('');
+      } catch (err) {
+        console.error('Error:', err);
+        tbody.innerHTML = '<tr><td colspan="6" class="error">Error</td></tr>';
+      }
+    }
+    
+    // Data Sources
+    async function loadDataSources() {
+      const container = document.getElementById('data-sources-list');
+      try {
+        const res = await fetch(`${API_BASE}/data-sources`);
+        const sources = await res.json();
+        
+        container.innerHTML = sources.map(s => `
+          <div class="source-card">
+            <h4>${s.name}</h4>
+            <a href="${s.url}" target="_blank">${s.url}</a>
+            <p style="margin-top:0.5rem;font-size:0.8rem;color:var(--text-light);">${s.notes || ''}</p>
+          </div>
+        `).join('');
+      } catch (err) {
+        container.innerHTML = '<div class="error">Error loading data sources</div>';
+      }
+    }
+    
+    // Provider Detail Modal
+    async function showProviderDetail(id) {
+      if (!id) return;
+      openModal('provider-modal');
+      document.getElementById('provider-modal-body').innerHTML = '<div class="loading">Loading...</div>';
+      
+      try {
+        const res = await fetch(`${API_BASE}/providers/${id}`);
+        const p = await res.json();
+        
+        // Calculate totals
+        const totalPayments = p.payments?.reduce((sum, pay) => sum + (pay.amount || 0), 0) || 0;
+        const maxChildren = Math.max(...(p.payments?.map(pay => pay.children_served || 0) || [0]));
+        
+        document.getElementById('provider-modal-title').textContent = p.name;
+        document.getElementById('provider-modal-body').innerHTML = `
+          ${p.is_immigrant_owned ? '<div class="alert-box"><h4>Immigrant-Owned Provider</h4><p style="font-size:0.85rem">' + (p.owner_background || 'Background information available for review.') + '</p></div>' : ''}
+          
+          <div class="detail-grid">
+            <div class="detail-item"><label>Owner</label><div class="value">${p.owner_name || '-'}</div></div>
+            <div class="detail-item"><label>Address</label><div class="value">${p.address || '-'}</div></div>
+            <div class="detail-item"><label>City</label><div class="value">${p.city || '-'}, ${p.state || 'NH'}</div></div>
+            <div class="detail-item"><label>License Type</label><div class="value">${p.license_type || '-'}</div></div>
+            <div class="detail-item"><label>Licensed Capacity</label><div class="value">${p.capacity || '-'}</div></div>
+            <div class="detail-item"><label>Max Children Served</label><div class="value">${maxChildren > (p.capacity || 0) ? '<span class="capacity-warning">' + maxChildren + ' (OVER CAPACITY)</span>' : maxChildren}</div></div>
+            <div class="detail-item"><label>Provider Type</label><div class="value">${p.provider_type || '-'}</div></div>
+            <div class="detail-item"><label>Languages</label><div class="value">${p.language_services || '-'}</div></div>
+            <div class="detail-item"><label>Total CCDF Payments</label><div class="value amount">${formatCurrency(totalPayments)}</div></div>
+            <div class="detail-item"><label>CCDF Participant</label><div class="value">${p.accepts_ccdf ? 'Yes' : 'No'}</div></div>
+          </div>
+          
+          ${p.notes ? `<div class="detail-item" style="margin-bottom:1rem"><label>Notes</label><div class="value">${p.notes}</div></div>` : ''}
+          
+          ${p.fraud_indicators && p.fraud_indicators.length > 0 ? `
+            <div class="alert-box danger">
+              <h4>Fraud Indicators (${p.fraud_indicators.length})</h4>
+            </div>
+            <table style="margin-bottom:1.5rem">
+              <thead><tr><th>Severity</th><th>Type</th><th>Description</th><th>Status</th></tr></thead>
+              <tbody>
+                ${p.fraud_indicators.map(f => `
+                  <tr>
+                    <td>${severityBadge(f.severity)}</td>
+                    <td>${f.indicator_type.replace(/_/g, ' ')}</td>
+                    <td>${f.description}</td>
+                    <td>${statusBadge(f.status)}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          ` : ''}
+          
+          ${p.payments && p.payments.length > 0 ? `
+            <h4 style="margin-bottom:0.75rem">Payment History (${p.payments.length} payments)</h4>
+            <table>
+              <thead><tr><th>Period</th><th>Amount</th><th>Children</th><th>$/Child</th><th>Type</th></tr></thead>
+              <tbody>
+                ${p.payments.map(pay => {
+                  const perChild = pay.children_served ? (pay.amount / pay.children_served).toFixed(0) : '-';
+                  return `
+                    <tr>
+                      <td>${formatMonth(pay.fiscal_year, pay.fiscal_month)}</td>
+                      <td class="amount">${formatCurrency(pay.amount)}</td>
+                      <td>${pay.children_served > (p.capacity || 999) ? '<span class="capacity-warning">' + pay.children_served + '</span>' : pay.children_served || '-'}</td>
+                      <td class="amount">${perChild !== '-' ? '$' + perChild : '-'}</td>
+                      <td>${pay.payment_type || '-'}</td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+          ` : '<p>No payment records found</p>'}
+        `;
+      } catch (err) {
+        document.getElementById('provider-modal-body').innerHTML = '<div class="error">Error loading provider details</div>';
+      }
+    }
+    
+    // Export Data
+    async function exportData(type) {
+      let data = [];
+      let filename = '';
+      
+      try {
+        if (type === 'providers') {
+          const res = await fetch(`${API_BASE}/providers`);
+          data = await res.json();
+          filename = 'nh-childcare-providers.csv';
+        } else if (type === 'payments') {
+          const res = await fetch(`${API_BASE}/payments?limit=1000`);
+          data = await res.json();
+          filename = 'nh-ccdf-payments.csv';
+        } else if (type === 'fraud') {
+          const res = await fetch(`${API_BASE}/fraud-indicators`);
+          data = await res.json();
+          filename = 'nh-fraud-indicators.csv';
+        }
+        
+        if (data.length === 0) {
+          alert('No data to export');
+          return;
+        }
+        
+        // Convert to CSV
+        const headers = Object.keys(data[0]);
+        const csv = [
+          headers.join(','),
+          ...data.map(row => headers.map(h => {
+            let val = row[h];
+            if (val === null || val === undefined) val = '';
+            if (typeof val === 'string' && (val.includes(',') || val.includes('"') || val.includes('\n'))) {
+              val = '"' + val.replace(/"/g, '""') + '"';
+            }
+            return val;
+          }).join(','))
+        ].join('\n');
+        
+        // Download
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        console.error('Export error:', err);
+        alert('Error exporting data');
+      }
+    }
+    
+    // ============================================
+    // Import & Analysis Tools
+    // ============================================
+    
+    // Load tools view (fetch available fiscal years)
+    async function loadToolsView() {
+      try {
+        const response = await fetch(`${API_BASE}/scraper/transparent-nh/years`);
+        const data = await response.json();
+        
+        const select = document.getElementById('fiscal-year-select');
+        select.innerHTML = data.years.map(year => 
+          `<option value="${year}">FY ${year}</option>`
+        ).join('');
+      } catch (err) {
+        console.error('Error loading fiscal years:', err);
+        document.getElementById('fiscal-year-select').innerHTML = 
+          '<option value="">Error loading years</option>';
+      }
+    }
+    
+    // TransparentNH Scraper
+    async function scrapeTransparentNH() {
+      const fiscalYear = document.getElementById('fiscal-year-select').value;
+      const resultDiv = document.getElementById('transparent-nh-result');
+      
+      if (!fiscalYear) {
+        alert('Please select a fiscal year');
+        return;
+      }
+      
+      resultDiv.style.display = 'block';
+      resultDiv.innerHTML = `<div class="loading">Downloading and processing FY${fiscalYear} data from TransparentNH... This may take a minute.</div>`;
+      
+      try {
+        const response = await fetch(`${API_BASE}/scraper/transparent-nh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fiscalYear: parseInt(fiscalYear) }),
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+          resultDiv.innerHTML = `
+            <div class="alert-box" style="background:#c6f6d5;border-color:#38a169;">
+              <h4 style="color:#276749;">FY${result.fiscalYear} Scrape Complete</h4>
+              <ul style="margin-left:1.5rem;font-size:0.85rem;">
+                <li>Total records in file: ${result.totalRecords.toLocaleString()}</li>
+                <li>Childcare-related records: ${result.childcareRecords.toLocaleString()}</li>
+                <li>New records imported: ${result.importedRecords.toLocaleString()}</li>
+                <li>Total amount: ${formatCurrency(result.totalAmount)}</li>
+              </ul>
+            </div>
+          `;
+        } else {
+          resultDiv.innerHTML = `
+            <div class="alert-box danger">
+              <h4>Scrape Failed</h4>
+              <p>${result.error}</p>
+            </div>
+          `;
+        }
+      } catch (err) {
+        console.error('TransparentNH scrape error:', err);
+        resultDiv.innerHTML = `<div class="alert-box danger"><h4>Error</h4><p>${err.message}</p></div>`;
+      }
+    }
+    
+    async function scrapeRecentYears() {
+      const resultDiv = document.getElementById('transparent-nh-result');
+      
+      resultDiv.style.display = 'block';
+      resultDiv.innerHTML = '<div class="loading">Downloading recent fiscal years from TransparentNH... This may take several minutes.</div>';
+      
+      try {
+        const response = await fetch(`${API_BASE}/scraper/transparent-nh/recent`, {
+          method: 'POST',
+        });
+        
+        const result = await response.json();
+        
+        const yearResults = result.results.map(r => 
+          `<li>FY${r.fiscalYear}: ${r.success ? r.importedRecords + ' imported' : 'Failed - ' + r.error}</li>`
+        ).join('');
+        
+        resultDiv.innerHTML = `
+          <div class="alert-box" style="background:#c6f6d5;border-color:#38a169;">
+            <h4 style="color:#276749;">Recent Years Scrape Complete</h4>
+            <ul style="margin-left:1.5rem;font-size:0.85rem;">
+              <li>Years scraped: ${result.years_scraped}</li>
+              <li>Total records found: ${result.total_records.toLocaleString()}</li>
+              <li>Childcare records: ${result.childcare_records.toLocaleString()}</li>
+              <li>New records imported: ${result.imported_records.toLocaleString()}</li>
+              <li>Total amount: ${formatCurrency(result.total_amount)}</li>
+            </ul>
+            <p style="margin-top:0.5rem;font-weight:600;">By Year:</p>
+            <ul style="margin-left:1.5rem;font-size:0.85rem;">
+              ${yearResults}
+            </ul>
+          </div>
+        `;
+      } catch (err) {
+        console.error('TransparentNH scrape error:', err);
+        resultDiv.innerHTML = `<div class="alert-box danger"><h4>Error</h4><p>${err.message}</p></div>`;
+      }
+    }
+    
+    // CSV Import
+    async function importCSV() {
+      const fileInput = document.getElementById('csv-file');
+      const filterChildcare = document.getElementById('filter-childcare').checked;
+      const createProviders = document.getElementById('create-providers').checked;
+      const resultDiv = document.getElementById('import-result');
+      
+      if (!fileInput.files || !fileInput.files[0]) {
+        alert('Please select a CSV file');
+        return;
+      }
+      
+      resultDiv.style.display = 'block';
+      resultDiv.innerHTML = '<div class="loading">Importing CSV...</div>';
+      
+      try {
+        const file = fileInput.files[0];
+        const csvContent = await file.text();
+        
+        const response = await fetch(`${API_BASE}/import/csv?filter_childcare=${filterChildcare}&create_providers=${createProviders}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ csv: csvContent }),
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+          resultDiv.innerHTML = `
+            <div class="alert-box" style="background:#c6f6d5;border-color:#38a169;">
+              <h4 style="color:#276749;">Import Successful</h4>
+              <ul style="margin-left:1.5rem;font-size:0.85rem;">
+                <li>Total rows: ${result.totalRows}</li>
+                <li>Imported: ${result.importedRows}</li>
+                <li>Skipped: ${result.skippedRows}</li>
+                <li>Matched providers: ${result.matchedProviders}</li>
+                <li>New expenditures: ${result.newExpenditures}</li>
+              </ul>
+              ${result.errors.length > 0 ? '<p style="margin-top:0.5rem;color:var(--warning);">Warnings: ' + result.errors.slice(0,3).join(', ') + '</p>' : ''}
+            </div>
+          `;
+        } else {
+          resultDiv.innerHTML = `
+            <div class="alert-box danger">
+              <h4>Import Failed</h4>
+              <p>${result.errors.join(', ')}</p>
+            </div>
+          `;
+        }
+      } catch (err) {
+        console.error('Import error:', err);
+        resultDiv.innerHTML = `<div class="alert-box danger"><h4>Error</h4><p>${err.message}</p></div>`;
+      }
+    }
+    
+    // Scrape Contracts
+    async function scrapeContracts() {
+      const keyword = document.getElementById('scrape-keyword').value || 'daycare';
+      const resultDiv = document.getElementById('scrape-result');
+      
+      resultDiv.style.display = 'block';
+      resultDiv.innerHTML = `<div class="loading">Searching NH DAS for "${keyword}"...</div>`;
+      
+      try {
+        const response = await fetch(`${API_BASE}/scraper/search`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ keyword }),
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+          resultDiv.innerHTML = `
+            <div class="alert-box" style="background:#c6f6d5;border-color:#38a169;">
+              <h4 style="color:#276749;">Scrape Complete</h4>
+              <ul style="margin-left:1.5rem;font-size:0.85rem;">
+                <li>Found: ${result.contracts.length} contracts</li>
+                <li>Saved: ${result.saved} new contracts</li>
+              </ul>
+            </div>
+          `;
+        } else {
+          resultDiv.innerHTML = `
+            <div class="alert-box danger">
+              <h4>Scrape Failed</h4>
+              <p>${result.error}</p>
+            </div>
+          `;
+        }
+      } catch (err) {
+        console.error('Scrape error:', err);
+        resultDiv.innerHTML = `<div class="alert-box danger"><h4>Error</h4><p>${err.message}</p></div>`;
+      }
+    }
+    
+    async function scrapeAllChildcare() {
+      const resultDiv = document.getElementById('scrape-result');
+      
+      resultDiv.style.display = 'block';
+      resultDiv.innerHTML = '<div class="loading">Running full childcare scrape (this may take a minute)...</div>';
+      
+      try {
+        const response = await fetch(`${API_BASE}/scraper/full`, {
+          method: 'POST',
+        });
+        
+        const result = await response.json();
+        
+        resultDiv.innerHTML = `
+          <div class="alert-box" style="background:#c6f6d5;border-color:#38a169;">
+            <h4 style="color:#276749;">Full Scrape Complete</h4>
+            <ul style="margin-left:1.5rem;font-size:0.85rem;">
+              <li>Keywords searched: ${result.keywords_searched}</li>
+              <li>Total found: ${result.total} contracts</li>
+              <li>Saved: ${result.saved} new contracts</li>
+              ${result.errors.length > 0 ? '<li style="color:var(--warning);">Errors: ' + result.errors.length + '</li>' : ''}
+            </ul>
+          </div>
+        `;
+      } catch (err) {
+        console.error('Scrape error:', err);
+        resultDiv.innerHTML = `<div class="alert-box danger"><h4>Error</h4><p>${err.message}</p></div>`;
+      }
+    }
+    
+    // Fraud Analysis
+    async function runFraudAnalysis() {
+      const resultDiv = document.getElementById('analysis-result');
+      
+      resultDiv.style.display = 'block';
+      resultDiv.innerHTML = '<div class="loading">Running full fraud analysis...</div>';
+      
+      try {
+        const response = await fetch(`${API_BASE}/analyze/fraud`, {
+          method: 'POST',
+        });
+        
+        const result = await response.json();
+        
+        resultDiv.innerHTML = `
+          <div class="alert-box" style="background:#c6f6d5;border-color:#38a169;">
+            <h4 style="color:#276749;">Analysis Complete</h4>
+            <ul style="margin-left:1.5rem;font-size:0.85rem;">
+              <li>Structuring flags: ${result.structuring.length}</li>
+              <li>Duplicate flags: ${result.duplicates.length}</li>
+              <li>New fraud indicators saved: ${result.savedIndicators}</li>
+            </ul>
+          </div>
+        `;
+        
+        // Show structuring results
+        if (result.structuring.length > 0) {
+          showStructuringResults(result.structuring);
+        }
+        
+        // Show duplicate results
+        if (result.duplicates.length > 0) {
+          showDuplicateResults(result.duplicates);
+        }
+        
+        // Show vendor concentration
+        if (result.vendorConcentration.length > 0) {
+          showConcentrationResults(result.vendorConcentration);
+        }
+        
+      } catch (err) {
+        console.error('Analysis error:', err);
+        resultDiv.innerHTML = `<div class="alert-box danger"><h4>Error</h4><p>${err.message}</p></div>`;
+      }
+    }
+    
+    async function detectStructuring() {
+      const resultDiv = document.getElementById('analysis-result');
+      
+      resultDiv.style.display = 'block';
+      resultDiv.innerHTML = '<div class="loading">Detecting structuring patterns...</div>';
+      
+      try {
+        const response = await fetch(`${API_BASE}/analyze/structuring`);
+        const result = await response.json();
+        
+        resultDiv.innerHTML = `
+          <div class="alert-box">
+            <h4>Structuring Detection</h4>
+            <p>Found ${result.count} potential structuring patterns (threshold: $${result.threshold.toLocaleString()})</p>
+          </div>
+        `;
+        
+        if (result.flags.length > 0) {
+          showStructuringResults(result.flags);
+        }
+      } catch (err) {
+        console.error('Error:', err);
+        resultDiv.innerHTML = `<div class="alert-box danger"><h4>Error</h4><p>${err.message}</p></div>`;
+      }
+    }
+    
+    async function detectDuplicates() {
+      const resultDiv = document.getElementById('analysis-result');
+      
+      resultDiv.style.display = 'block';
+      resultDiv.innerHTML = '<div class="loading">Finding duplicate transactions...</div>';
+      
+      try {
+        const response = await fetch(`${API_BASE}/analyze/duplicates`);
+        const result = await response.json();
+        
+        resultDiv.innerHTML = `
+          <div class="alert-box">
+            <h4>Duplicate Detection</h4>
+            <p>Found ${result.count} duplicate transaction groups</p>
+          </div>
+        `;
+        
+        if (result.duplicates.length > 0) {
+          showDuplicateResults(result.duplicates);
+        }
+      } catch (err) {
+        console.error('Error:', err);
+        resultDiv.innerHTML = `<div class="alert-box danger"><h4>Error</h4><p>${err.message}</p></div>`;
+      }
+    }
+    
+    function showStructuringResults(flags) {
+      const card = document.getElementById('structuring-card');
+      const tbody = document.querySelector('#structuring-table tbody');
+      
+      card.style.display = 'block';
+      tbody.innerHTML = flags.map(f => `
+        <tr>
+          <td><span class="badge badge-${f.type === 'split_payments' ? 'high' : 'medium'}">${f.type.replace(/_/g, ' ')}</span></td>
+          <td>${f.vendor}</td>
+          <td class="amount">${formatCurrency(f.total_amount)}</td>
+          <td>${f.transaction_count}</td>
+          <td style="font-size:0.75rem">${f.details}</td>
+          <td>${severityBadge(f.severity)}</td>
+        </tr>
+      `).join('');
+    }
+    
+    function showDuplicateResults(duplicates) {
+      const card = document.getElementById('duplicates-card');
+      const tbody = document.querySelector('#duplicates-table tbody');
+      
+      card.style.display = 'block';
+      tbody.innerHTML = duplicates.map(d => `
+        <tr>
+          <td>${d.vendor}</td>
+          <td class="amount">${formatCurrency(d.amount)}</td>
+          <td>${d.date}</td>
+          <td><span class="badge badge-high">${d.count}x</span></td>
+          <td style="font-size:0.75rem">${d.transaction_ids.join(', ')}</td>
+        </tr>
+      `).join('');
+    }
+    
+    function showConcentrationResults(vendors) {
+      const card = document.getElementById('concentration-card');
+      const tbody = document.querySelector('#concentration-table tbody');
+      
+      card.style.display = 'block';
+      tbody.innerHTML = vendors.map(v => `
+        <tr>
+          <td class="clickable" onclick="showProviderDetail(${v.vendor_id})">${v.vendor}</td>
+          <td>${v.is_immigrant_owned ? '<span class="badge badge-immigrant">Yes</span>' : 'No'}</td>
+          <td class="amount">${formatCurrency(v.total_amount)}</td>
+          <td>${v.transaction_count}</td>
+          <td class="amount">${formatCurrency(v.average_amount)}</td>
+        </tr>
+      `).join('');
+    }
+    
+    // Initial load
+    loadDashboard();
+  </script>
+</body>
+</html>

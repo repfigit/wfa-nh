@@ -1,0 +1,20 @@
+# Dependencies
+node_modules
+
+# Build output (Vercel builds fresh)
+dist
+
+# Local data
+data
+
+# Dev files
+*.log
+.env.local
+.env.development.local
+
+# Git
+.git
+
+# Deprecated source
+src/scrapers
+src/analysis
