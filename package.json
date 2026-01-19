@@ -9,6 +9,11 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "seed": "tsx src/db/seed.ts",
+    "migrate-to-turso": "tsx src/db/migrate-to-turso.ts",
+    "init-turbo": "tsx src/db/init-turbo.ts",
+    "test-turbo": "tsx src/db/test-turbo.ts",
+    "create-schema": "tsx src/db/create-schema.ts",
+    "migrate-simple": "node migrate-simple.js",
     "vercel-build": "tsc"
   },
   "dependencies": {

@@ -36,12 +36,13 @@ const asyncHandler = (fn: (req: Request, res: Response, next: NextFunction) => P
     Promise.resolve(fn(req, res, next)).catch(next);
   };
 
-// Initialize database with seed data on cold start
+// Initialize database on cold start
 let initialized = false;
 async function ensureInitialized() {
   if (!initialized) {
     await initializeDb();
-    await seedDatabase();
+    // Note: We migrated existing data to Turso, so we don't seed fresh data
+    // await seedDatabase();
     initialized = true;
   }
 }
