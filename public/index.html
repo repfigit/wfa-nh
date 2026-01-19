@@ -1781,10 +1781,10 @@
     }
     
     // ============================================
-    // SCRAPER JOB MANAGEMENT (NEW)
+    // TRIGGER.DEV JOB MANAGEMENT
     // ============================================
     
-    let activeJobPollers = {};
+    let activeTriggerPollers = {};
     
     // Load tools view - fetch fiscal years and job history
     async function loadToolsView() {
@@ -1798,7 +1798,7 @@
           `<option value="${year}">FY ${year}</option>`
         ).join('');
         
-        // Load job history
+        // Load job history from Trigger.dev
         await loadJobHistory();
         
         // Check for active jobs
@@ -1808,36 +1808,38 @@
       }
     }
     
-    // Load job history table
+    // Load job history table from Trigger.dev runs
     async function loadJobHistory() {
       try {
-        const response = await fetch(`${API_BASE}/scraper/jobs`);
-        const jobs = await response.json();
+        const response = await fetch(`${API_BASE}/trigger/runs?limit=20`);
+        const data = await response.json();
         
         const tbody = document.getElementById('job-history-body');
         
-        if (jobs.length === 0) {
+        if (!data.runs || data.runs.length === 0) {
           tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-light);">No scraper jobs yet</td></tr>';
           return;
         }
         
-        tbody.innerHTML = jobs.map(job => {
-          const duration = job.completed_at 
-            ? formatDuration(new Date(job.started_at), new Date(job.completed_at))
+        tbody.innerHTML = data.runs.map(run => {
+          const duration = run.finishedAt 
+            ? formatDuration(new Date(run.createdAt), new Date(run.finishedAt))
             : 'Running...';
+          
+          const statusClass = mapTriggerStatus(run.status);
           
           return `
             <tr>
-              <td><strong>${formatScraperName(job.scraper_name)}</strong></td>
-              <td><span class="progress-status ${job.status}">${job.status}</span></td>
+              <td><strong>${formatTaskName(run.taskIdentifier)}</strong></td>
+              <td><span class="progress-status ${statusClass}">${run.status}</span></td>
               <td>
                 <div class="progress-bar-bg" style="width:80px;height:6px;">
-                  <div class="progress-bar-fill ${job.status}" style="width:${job.progress}%;"></div>
+                  <div class="progress-bar-fill ${statusClass}" style="width:${getProgressFromStatus(run.status)}%;"></div>
                 </div>
               </td>
-              <td>${job.records_found || 0}</td>
-              <td>${job.records_imported || 0}</td>
-              <td>${formatTime(job.started_at)}</td>
+              <td>-</td>
+              <td>-</td>
+              <td>${formatTime(run.createdAt)}</td>
               <td>${duration}</td>
             </tr>
           `;
@@ -1849,13 +1851,49 @@
       }
     }
     
+    // Map Trigger.dev status to CSS class
+    function mapTriggerStatus(status) {
+      const map = {
+        'PENDING': 'pending',
+        'QUEUED': 'pending',
+        'EXECUTING': 'running',
+        'REATTEMPTING': 'running',
+        'COMPLETED': 'completed',
+        'SYSTEM_FAILURE': 'failed',
+        'INTERRUPTED': 'failed',
+        'CRASHED': 'failed',
+        'FAILED': 'failed',
+        'CANCELED': 'failed',
+      };
+      return map[status] || 'pending';
+    }
+    
+    // Get progress percentage from status
+    function getProgressFromStatus(status) {
+      const map = {
+        'PENDING': 0,
+        'QUEUED': 10,
+        'EXECUTING': 50,
+        'REATTEMPTING': 30,
+        'COMPLETED': 100,
+        'SYSTEM_FAILURE': 100,
+        'INTERRUPTED': 100,
+        'CRASHED': 100,
+        'FAILED': 100,
+        'CANCELED': 100,
+      };
+      return map[status] || 0;
+    }
+    
     // Refresh active job status
     async function refreshJobStatus() {
       try {
-        const response = await fetch(`${API_BASE}/scraper/jobs`);
-        const jobs = await response.json();
+        const response = await fetch(`${API_BASE}/trigger/runs?limit=10`);
+        const data = await response.json();
         
-        const runningJobs = jobs.filter(j => j.status === 'running');
+        const runningJobs = (data.runs || []).filter(r => 
+          r.status === 'PENDING' || r.status === 'QUEUED' || r.status === 'EXECUTING' || r.status === 'REATTEMPTING'
+        );
         const panel = document.getElementById('active-jobs-panel');
         const list = document.getElementById('active-jobs-list');
         
@@ -1865,22 +1903,22 @@
         }
         
         panel.style.display = 'block';
-        list.innerHTML = runningJobs.map(job => `
+        list.innerHTML = runningJobs.map(run => `
           <div class="active-job-item">
-            <div class="job-name">${formatScraperName(job.scraper_name)}</div>
+            <div class="job-name">${formatTaskName(run.taskIdentifier)}</div>
             <div class="job-progress">
               <div class="progress-bar-bg">
-                <div class="progress-bar-fill" style="width:${job.progress}%;"></div>
+                <div class="progress-bar-fill" style="width:${getProgressFromStatus(run.status)}%;"></div>
               </div>
             </div>
-            <div class="job-step">${job.current_step || 'Processing...'} (${job.progress}%)</div>
+            <div class="job-step">${run.status} (${getProgressFromStatus(run.status)}%)</div>
           </div>
         `).join('');
         
         // Start polling for running jobs
-        runningJobs.forEach(job => {
-          if (!activeJobPollers[job.id]) {
-            startJobPolling(job.id);
+        runningJobs.forEach(run => {
+          if (!activeTriggerPollers[run.id]) {
+            startTriggerPolling(run.id);
           }
         });
       } catch (err) {
@@ -1888,61 +1926,70 @@
       }
     }
     
-    // Poll a specific job for updates
-    function startJobPolling(jobId) {
-      if (activeJobPollers[jobId]) return;
+    // Poll a specific Trigger.dev run for updates
+    function startTriggerPolling(runId) {
+      if (activeTriggerPollers[runId]) return;
       
-      activeJobPollers[jobId] = setInterval(async () => {
+      activeTriggerPollers[runId] = setInterval(async () => {
         try {
-          const response = await fetch(`${API_BASE}/scraper/jobs/${jobId}`);
-          const job = await response.json();
+          const response = await fetch(`${API_BASE}/trigger/runs/${runId}`);
+          const run = await response.json();
           
           // Update the active jobs panel
           await refreshJobStatus();
           
           // If job is complete, stop polling and refresh history
-          if (job.status !== 'running') {
-            clearInterval(activeJobPollers[jobId]);
-            delete activeJobPollers[jobId];
+          const isComplete = ['COMPLETED', 'FAILED', 'SYSTEM_FAILURE', 'INTERRUPTED', 'CRASHED', 'CANCELED'].includes(run.status);
+          if (isComplete) {
+            clearInterval(activeTriggerPollers[runId]);
+            delete activeTriggerPollers[runId];
             await loadJobHistory();
             
             // Show completion notification
-            showJobNotification(job);
+            showTriggerNotification(run);
           }
         } catch (err) {
-          console.error('Error polling job:', err);
-          clearInterval(activeJobPollers[jobId]);
-          delete activeJobPollers[jobId];
+          console.error('Error polling run:', err);
+          clearInterval(activeTriggerPollers[runId]);
+          delete activeTriggerPollers[runId];
         }
-      }, 2000); // Poll every 2 seconds
+      }, 3000); // Poll every 3 seconds
     }
     
-    // Show job completion notification
-    function showJobNotification(job) {
+    // Show Trigger.dev job completion notification
+    function showTriggerNotification(run) {
       const resultDiv = document.getElementById('import-result');
       resultDiv.style.display = 'block';
       
-      if (job.status === 'completed') {
+      if (run.status === 'COMPLETED') {
+        const output = run.output || {};
         resultDiv.innerHTML = `
           <div class="alert-box" style="background:#c6f6d5;border-color:#38a169;">
-            <h4 style="color:#276749;">${formatScraperName(job.scraper_name)} Complete</h4>
+            <h4 style="color:#276749;">${formatTaskName(run.taskIdentifier)} Complete</h4>
             <ul style="margin-left:1.5rem;font-size:0.85rem;">
-              <li>Records found: ${job.records_found || 0}</li>
-              <li>Records imported: ${job.records_imported || 0}</li>
+              ${output.totalRecords !== undefined ? `<li>Total records: ${output.totalRecords || 0}</li>` : ''}
+              ${output.importedRecords !== undefined ? `<li>Imported: ${output.importedRecords || 0}</li>` : ''}
+              ${output.childcareRecords !== undefined ? `<li>Childcare records: ${output.childcareRecords || 0}</li>` : ''}
+              ${output.contractsFound !== undefined ? `<li>Contracts found: ${output.contractsFound || 0}</li>` : ''}
+              ${output.contractsSaved !== undefined ? `<li>Contracts saved: ${output.contractsSaved || 0}</li>` : ''}
+              ${output.providersFound !== undefined ? `<li>Providers found: ${output.providersFound || 0}</li>` : ''}
+              ${output.structuringFlags !== undefined ? `<li>Structuring flags: ${output.structuringFlags || 0}</li>` : ''}
+              ${output.duplicateFlags !== undefined ? `<li>Duplicate flags: ${output.duplicateFlags || 0}</li>` : ''}
+              ${output.savedIndicators !== undefined ? `<li>Fraud indicators saved: ${output.savedIndicators || 0}</li>` : ''}
             </ul>
           </div>
         `;
-      } else if (job.status === 'failed') {
+      } else {
         resultDiv.innerHTML = `
           <div class="alert-box danger">
-            <h4>${formatScraperName(job.scraper_name)} Failed</h4>
-            <p>${job.errors || 'Unknown error'}</p>
+            <h4>${formatTaskName(run.taskIdentifier)} Failed</h4>
+            <p>${run.error?.message || run.error || 'Unknown error'}</p>
           </div>
         `;
       }
     }
     
-    // Start TransparentNH scraper with job tracking
+    // Start TransparentNH scraper with Trigger.dev
     async function startTransparentNHScraper() {
       const fiscalYear = document.getElementById('fiscal-year-select').value;
       
@@ -1952,7 +1999,7 @@
       }
       
       try {
-        const response = await fetch(`${API_BASE}/scraper/transparent-nh/start`, {
+        const response = await fetch(`${API_BASE}/trigger/transparent-nh`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ fiscalYear: parseInt(fiscalYear) }),
@@ -1960,9 +2007,21 @@
         
         const result = await response.json();
         
-        if (result.jobId) {
-          startJobPolling(result.jobId);
+        if (result.runId) {
+          startTriggerPolling(result.runId);
           await refreshJobStatus();
+          
+          // Show immediate feedback
+          const resultDiv = document.getElementById('import-result');
+          resultDiv.style.display = 'block';
+          resultDiv.innerHTML = `
+            <div class="alert-box">
+              <h4>TransparentNH Scraper Started</h4>
+              <p style="font-size:0.85rem;">Run ID: ${result.runId}. Monitoring progress...</p>
+            </div>
+          `;
+        } else {
+          throw new Error(result.error || 'Failed to start task');
         }
       } catch (err) {
         console.error('Error starting scraper:', err);
@@ -1970,38 +2029,32 @@
       }
     }
     
-    // Start TransparentNH recent years scraper
+    // Start TransparentNH recent years scraper with Trigger.dev
     async function startTransparentNHRecent() {
       try {
-        const response = await fetch(`${API_BASE}/scraper/transparent-nh/recent`, {
+        const response = await fetch(`${API_BASE}/trigger/transparent-nh`, {
           method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ recentYears: true }),
         });
         
         const result = await response.json();
         
-        // Show result directly (this one doesn't have job tracking yet)
-        const resultDiv = document.getElementById('import-result');
-        resultDiv.style.display = 'block';
-        
-        if (result.success) {
-          const yearResults = result.results.map(r => 
-            `<li>FY${r.fiscalYear}: ${r.success ? r.importedRecords + ' imported' : 'Failed'}</li>`
-          ).join('');
+        if (result.runId) {
+          startTriggerPolling(result.runId);
+          await refreshJobStatus();
           
+          // Show immediate feedback
+          const resultDiv = document.getElementById('import-result');
+          resultDiv.style.display = 'block';
           resultDiv.innerHTML = `
-            <div class="alert-box" style="background:#c6f6d5;border-color:#38a169;">
-              <h4 style="color:#276749;">Recent Years Scrape Complete</h4>
-              <ul style="margin-left:1.5rem;font-size:0.85rem;">
-                <li>Years scraped: ${result.years_scraped}</li>
-                <li>Total imported: ${result.imported_records}</li>
-                <li>Total amount: ${formatCurrency(result.total_amount)}</li>
-              </ul>
-              <p style="margin-top:0.5rem;font-weight:600;">By Year:</p>
-              <ul style="margin-left:1.5rem;font-size:0.85rem;">${yearResults}</ul>
+            <div class="alert-box">
+              <h4>TransparentNH Recent Years Scraper Started</h4>
+              <p style="font-size:0.85rem;">Run ID: ${result.runId}. Scraping last 3 fiscal years...</p>
             </div>
           `;
         } else {
-          resultDiv.innerHTML = `<div class="alert-box danger"><h4>Error</h4><p>Scrape failed</p></div>`;
+          throw new Error(result.error || 'Failed to start task');
         }
       } catch (err) {
         console.error('Error starting scraper:', err);
@@ -2009,12 +2062,12 @@
       }
     }
     
-    // Start contracts scraper with job tracking
+    // Start contracts scraper with Trigger.dev
     async function startContractsScraper() {
       const keyword = document.getElementById('scrape-keyword').value || 'daycare';
       
       try {
-        const response = await fetch(`${API_BASE}/scraper/contracts/start`, {
+        const response = await fetch(`${API_BASE}/trigger/contracts`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ keyword }),
@@ -2022,9 +2075,21 @@
         
         const result = await response.json();
         
-        if (result.jobId) {
-          startJobPolling(result.jobId);
+        if (result.runId) {
+          startTriggerPolling(result.runId);
           await refreshJobStatus();
+          
+          // Show immediate feedback
+          const resultDiv = document.getElementById('import-result');
+          resultDiv.style.display = 'block';
+          resultDiv.innerHTML = `
+            <div class="alert-box">
+              <h4>NH DAS Contracts Scraper Started</h4>
+              <p style="font-size:0.85rem;">Run ID: ${result.runId}. Searching for "${keyword}"...</p>
+            </div>
+          `;
+        } else {
+          throw new Error(result.error || 'Failed to start task');
         }
       } catch (err) {
         console.error('Error starting scraper:', err);
@@ -2032,18 +2097,32 @@
       }
     }
     
-    // Start full contracts scraper with job tracking
+    // Start full contracts scraper with Trigger.dev
     async function startFullContractsScraper() {
       try {
-        const response = await fetch(`${API_BASE}/scraper/contracts/full/start`, {
+        const response = await fetch(`${API_BASE}/trigger/contracts`, {
           method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fullScrape: true }),
         });
         
         const result = await response.json();
         
-        if (result.jobId) {
-          startJobPolling(result.jobId);
+        if (result.runId) {
+          startTriggerPolling(result.runId);
           await refreshJobStatus();
+          
+          // Show immediate feedback
+          const resultDiv = document.getElementById('import-result');
+          resultDiv.style.display = 'block';
+          resultDiv.innerHTML = `
+            <div class="alert-box">
+              <h4>NH DAS Full Contracts Scraper Started</h4>
+              <p style="font-size:0.85rem;">Run ID: ${result.runId}. Searching all childcare keywords...</p>
+            </div>
+          `;
+        } else {
+          throw new Error(result.error || 'Failed to start task');
         }
       } catch (err) {
         console.error('Error starting scraper:', err);
@@ -2051,18 +2130,32 @@
       }
     }
     
-    // Start fraud analysis with job tracking
+    // Start fraud analysis with Trigger.dev
     async function startFraudAnalysis() {
       try {
-        const response = await fetch(`${API_BASE}/analyze/fraud/start`, {
+        const response = await fetch(`${API_BASE}/trigger/fraud-analysis`, {
           method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ analysisType: 'full' }),
         });
         
         const result = await response.json();
         
-        if (result.jobId) {
-          startJobPolling(result.jobId);
+        if (result.runId) {
+          startTriggerPolling(result.runId);
           await refreshJobStatus();
+          
+          // Show immediate feedback
+          const resultDiv = document.getElementById('import-result');
+          resultDiv.style.display = 'block';
+          resultDiv.innerHTML = `
+            <div class="alert-box">
+              <h4>Fraud Analysis Started</h4>
+              <p style="font-size:0.85rem;">Run ID: ${result.runId}. Running full fraud detection...</p>
+            </div>
+          `;
+        } else {
+          throw new Error(result.error || 'Failed to start task');
         }
       } catch (err) {
         console.error('Error starting analysis:', err);
@@ -2070,15 +2163,20 @@
       }
     }
     
-    // Helper: Format scraper name for display
-    function formatScraperName(name) {
+    // Helper: Format task name for display
+    function formatTaskName(taskId) {
       const names = {
-        'transparent-nh': 'TransparentNH Expenditures',
-        'nh-das-contracts': 'NH DAS Contracts',
-        'nh-das-full': 'NH DAS Full Scrape',
-        'fraud-analysis': 'Fraud Analysis',
+        'scrape-transparent-nh': 'TransparentNH Expenditures',
+        'scrape-nh-das-contracts': 'NH DAS Contracts',
+        'scrape-nh-licensing': 'NH Licensing',
+        'run-fraud-analysis': 'Fraud Analysis',
       };
-      return names[name] || name;
+      return names[taskId] || taskId;
+    }
+    
+    // Helper: Format scraper name for display (legacy compatibility)
+    function formatScraperName(name) {
+      return formatTaskName(name);
     }
     
     // Helper: Format duration
