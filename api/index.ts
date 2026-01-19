@@ -338,6 +338,49 @@ app.post('/api/admin/cleanup-duplicates', asyncHandler(async (req, res) => {
   });
 }));
 
+// Force schema creation and seeding (admin endpoint)
+app.post('/api/admin/init-db', asyncHandler(async (req, res) => {
+  console.log('Manually initializing database...');
+  const { initDb, executeRaw, query } = await import('../src/db/db-adapter.js');
+  const { postgresSchema, postgresDataSources, postgresKeywords } = await import('../src/db/schema-postgres.js');
+  
+  try {
+    await initDb();
+    
+    // Create schema
+    console.log('Creating schema...');
+    await executeRaw(postgresSchema);
+    
+    // Check if already seeded
+    let count = 0;
+    try {
+      const result = await query('SELECT COUNT(*) as count FROM data_sources');
+      count = result[0]?.count || 0;
+    } catch (e) {
+      // Table might not exist yet
+    }
+    
+    if (count === 0) {
+      console.log('Seeding data sources...');
+      await executeRaw(postgresDataSources);
+      console.log('Seeding keywords...');
+      await executeRaw(postgresKeywords);
+    }
+    
+    // Verify
+    const sources = await query('SELECT * FROM data_sources');
+    
+    res.json({ 
+      message: 'Database initialized successfully',
+      dataSourcesCount: sources.length,
+      dataSources: sources
+    });
+  } catch (error: any) {
+    console.error('Init error:', error);
+    res.status(500).json({ error: error.message, stack: error.stack });
+  }
+}));
+
 // Force schema creation (admin endpoint)
 app.post('/api/admin/create-schema', asyncHandler(async (req, res) => {
   console.log('Manually creating schema...');
@@ -360,20 +403,36 @@ app.get('/api/admin/db-info', asyncHandler(async (req, res) => {
   // Initialize DB first
   await initDb();
   
-  const env = {
+  const env: any = {
     TURSO_DATABASE_URL: process.env.TURSO_DATABASE_URL ? 'SET' : 'NOT SET',
     TURSO_AUTH_TOKEN: process.env.TURSO_AUTH_TOKEN ? 'SET' : 'NOT SET',
     isTurso: IS_TURSO(),
     isLocal: IS_LOCAL(),
     nodeEnv: process.env.NODE_ENV
-  } as any;
+  };
   
   // Test basic query
   try {
     const testResult = await query('SELECT 1 as test');
     env.testQuery = testResult;
-  } catch (error) {
+  } catch (error: any) {
     env.testQueryError = error.message;
+  }
+  
+  // Check tables
+  try {
+    const tables = await query("SELECT name FROM sqlite_master WHERE type='table'");
+    env.tables = tables.map((t: any) => t.name);
+  } catch (error: any) {
+    env.tablesError = error.message;
+  }
+  
+  // Check data_sources count
+  try {
+    const dsCount = await query('SELECT COUNT(*) as count FROM data_sources');
+    env.dataSourcesCount = dsCount[0]?.count;
+  } catch (error: any) {
+    env.dataSourcesError = error.message;
   }
   
   res.json(env);
