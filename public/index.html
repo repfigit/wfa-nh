@@ -753,6 +753,49 @@
               <div id="fraud-progress" style="display:none;"></div>
             </div>
             
+            <!-- USAspending.gov Scraper -->
+            <div class="scraper-card">
+              <h4>
+                <span class="icon" style="background:#3182ce;color:white;">F</span>
+                USAspending.gov (Federal)
+              </h4>
+              <p>Fetch federal CCDF grant awards to NH from USAspending.gov API. Includes CFDA 93.575 and 93.596.</p>
+              <div style="margin-bottom:0.75rem;">
+                <select id="usaspending-year-select" style="width:100%;padding:0.5rem;border:1px solid var(--border);border-radius:4px;font-size:0.875rem;">
+                  <option value="">All Fiscal Years</option>
+                  <option value="2024">FY 2024</option>
+                  <option value="2023">FY 2023</option>
+                  <option value="2022">FY 2022</option>
+                  <option value="2021">FY 2021</option>
+                </select>
+              </div>
+              <div class="scraper-actions">
+                <button class="btn btn-sm" onclick="startUSASpendingScraper()">Fetch Awards</button>
+              </div>
+              <div id="usaspending-progress" style="display:none;"></div>
+            </div>
+            
+            <!-- ACF CCDF Data Scraper -->
+            <div class="scraper-card">
+              <h4>
+                <span class="icon" style="background:#805ad5;color:white;">A</span>
+                ACF CCDF Statistics
+              </h4>
+              <p>Official CCDF expenditure data from ACF.hhs.gov including state/federal spending breakdown.</p>
+              <div style="margin-bottom:0.75rem;">
+                <select id="acf-year-select" style="width:100%;padding:0.5rem;border:1px solid var(--border);border-radius:4px;font-size:0.875rem;">
+                  <option value="2022">FY 2022</option>
+                  <option value="2021">FY 2021</option>
+                  <option value="2020">FY 2020</option>
+                </select>
+              </div>
+              <div class="scraper-actions">
+                <button class="btn btn-sm" onclick="startACFScraper()">Fetch Stats</button>
+                <button class="btn btn-sm btn-outline" onclick="startACFAllYears()">All Years</button>
+              </div>
+              <div id="acf-progress" style="display:none;"></div>
+            </div>
+            
             <!-- CSV Import -->
             <div class="scraper-card">
               <h4>
@@ -2163,6 +2206,114 @@
       }
     }
     
+    // Start USAspending.gov scraper with Trigger.dev
+    async function startUSASpendingScraper() {
+      const yearSelect = document.getElementById('usaspending-year-select');
+      const fiscalYear = yearSelect.value || null;
+      
+      try {
+        const response = await fetch(`${API_BASE}/trigger/usaspending`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            fiscalYear: fiscalYear ? parseInt(fiscalYear) : undefined,
+            includeSummary: true 
+          }),
+        });
+        
+        const result = await response.json();
+        
+        if (result.runId) {
+          startTriggerPolling(result.runId);
+          await refreshJobStatus();
+          
+          // Show immediate feedback
+          const resultDiv = document.getElementById('import-result');
+          resultDiv.style.display = 'block';
+          resultDiv.innerHTML = `
+            <div class="alert-box">
+              <h4>USAspending.gov Scraper Started</h4>
+              <p style="font-size:0.85rem;">Run ID: ${result.runId}. Fetching federal CCDF awards${fiscalYear ? ` for FY${fiscalYear}` : ''}...</p>
+            </div>
+          `;
+        } else {
+          throw new Error(result.error || 'Failed to start task');
+        }
+      } catch (err) {
+        console.error('Error starting USAspending scraper:', err);
+        alert('Error starting scraper: ' + err.message);
+      }
+    }
+    
+    // Start ACF CCDF scraper with Trigger.dev
+    async function startACFScraper() {
+      const yearSelect = document.getElementById('acf-year-select');
+      const fiscalYear = yearSelect.value || '2022';
+      
+      try {
+        const response = await fetch(`${API_BASE}/trigger/acf-ccdf`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fiscalYear: parseInt(fiscalYear) }),
+        });
+        
+        const result = await response.json();
+        
+        if (result.runId) {
+          startTriggerPolling(result.runId);
+          await refreshJobStatus();
+          
+          // Show immediate feedback
+          const resultDiv = document.getElementById('import-result');
+          resultDiv.style.display = 'block';
+          resultDiv.innerHTML = `
+            <div class="alert-box">
+              <h4>ACF CCDF Scraper Started</h4>
+              <p style="font-size:0.85rem;">Run ID: ${result.runId}. Fetching FY${fiscalYear} CCDF statistics...</p>
+            </div>
+          `;
+        } else {
+          throw new Error(result.error || 'Failed to start task');
+        }
+      } catch (err) {
+        console.error('Error starting ACF scraper:', err);
+        alert('Error starting scraper: ' + err.message);
+      }
+    }
+    
+    // Start ACF CCDF scraper for all years
+    async function startACFAllYears() {
+      try {
+        const response = await fetch(`${API_BASE}/trigger/acf-ccdf`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ allYears: true }),
+        });
+        
+        const result = await response.json();
+        
+        if (result.runId) {
+          startTriggerPolling(result.runId);
+          await refreshJobStatus();
+          
+          // Show immediate feedback
+          const resultDiv = document.getElementById('import-result');
+          resultDiv.style.display = 'block';
+          resultDiv.innerHTML = `
+            <div class="alert-box">
+              <h4>ACF CCDF All Years Scraper Started</h4>
+              <p style="font-size:0.85rem;">Run ID: ${result.runId}. Fetching all available CCDF statistics...</p>
+            </div>
+          `;
+        } else {
+          throw new Error(result.error || 'Failed to start task');
+        }
+      } catch (err) {
+        console.error('Error starting ACF scraper:', err);
+        alert('Error starting scraper: ' + err.message);
+      }
+    }
+    
     // Helper: Format task name for display
     function formatTaskName(taskId) {
       const names = {
@@ -2170,6 +2321,8 @@
         'scrape-nh-das-contracts': 'NH DAS Contracts',
         'scrape-nh-licensing': 'NH Licensing',
         'run-fraud-analysis': 'Fraud Analysis',
+        'scrape-usaspending': 'USAspending.gov',
+        'scrape-acf-ccdf': 'ACF CCDF Statistics',
       };
       return names[taskId] || taskId;
     }

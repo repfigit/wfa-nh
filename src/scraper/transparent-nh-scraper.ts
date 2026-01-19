@@ -81,33 +81,150 @@ interface ScrapeResult {
 }
 
 /**
- * Download a file from URL
+ * Generate realistic browser headers to avoid bot detection
  */
-async function downloadFile(url: string, destPath: string): Promise<boolean> {
-  try {
-    console.log(`Downloading ${url}...`);
-    
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': '*/*',
-      },
-    });
-    
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    }
-    
-    const buffer = await response.arrayBuffer();
-    const fs = await import('fs');
-    fs.writeFileSync(destPath, Buffer.from(buffer));
-    
-    console.log(`Downloaded to ${destPath}`);
-    return true;
-  } catch (error) {
-    console.error(`Download failed:`, error);
-    return false;
+function getBrowserHeaders(referer?: string): Record<string, string> {
+  const headers: Record<string, string> = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Accept-Encoding': 'gzip, deflate, br',
+    'Connection': 'keep-alive',
+    'Upgrade-Insecure-Requests': '1',
+    'Sec-Fetch-Dest': 'document',
+    'Sec-Fetch-Mode': 'navigate',
+    'Sec-Fetch-Site': 'same-origin',
+    'Sec-Fetch-User': '?1',
+    'Cache-Control': 'max-age=0',
+    'sec-ch-ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+    'sec-ch-ua-mobile': '?0',
+    'sec-ch-ua-platform': '"Windows"',
+  };
+  
+  if (referer) {
+    headers['Referer'] = referer;
   }
+  
+  return headers;
+}
+
+/**
+ * Sleep for a random duration to mimic human behavior
+ */
+function randomSleep(minMs: number, maxMs: number): Promise<void> {
+  const delay = Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs;
+  return new Promise(resolve => setTimeout(resolve, delay));
+}
+
+/**
+ * Download a file from URL with retry logic and browser emulation
+ */
+async function downloadFile(url: string, destPath: string, maxRetries = 3): Promise<boolean> {
+  const baseUrl = 'https://www.nh.gov/transparentnh/where-the-money-goes/';
+  const downloadPageUrl = 'https://www.nh.gov/transparentnh/where-the-money-goes/fiscal-yr-downloads.htm';
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`Download attempt ${attempt}/${maxRetries} for ${url}...`);
+      
+      // Add random delay between attempts (2-5 seconds)
+      if (attempt > 1) {
+        await randomSleep(2000, 5000);
+      }
+      
+      // First, try to "visit" the download page to establish a session
+      if (attempt === 1) {
+        console.log('Establishing session by visiting download page...');
+        try {
+          const sessionResponse = await fetch(downloadPageUrl, {
+            headers: getBrowserHeaders(),
+            redirect: 'follow',
+          });
+          console.log(`Download page status: ${sessionResponse.status}`);
+          // Small delay after visiting the page
+          await randomSleep(500, 1500);
+        } catch (e) {
+          console.log('Could not access download page, continuing anyway...');
+        }
+      }
+      
+      // Now try to download the file with referer header
+      const response = await fetch(url, {
+        headers: getBrowserHeaders(downloadPageUrl),
+        redirect: 'follow',
+      });
+      
+      console.log(`Response status: ${response.status}`);
+      
+      if (response.status === 403) {
+        console.log('Access forbidden (403) - site may be blocking automated requests');
+        if (attempt < maxRetries) {
+          console.log('Will retry with longer delay...');
+          await randomSleep(3000, 7000);
+          continue;
+        }
+        throw new Error(`HTTP 403: Access Forbidden - site is blocking automated downloads`);
+      }
+      
+      if (response.status === 404) {
+        // Check if this is a real 404 or a bot-block masquerading as 404
+        const contentType = response.headers.get('content-type') || '';
+        const contentLength = response.headers.get('content-length');
+        
+        if (contentType.includes('text/html') && contentLength && parseInt(contentLength) < 1000) {
+          console.log('Received small HTML response for ZIP file - likely bot protection');
+          if (attempt < maxRetries) {
+            await randomSleep(3000, 7000);
+            continue;
+          }
+        }
+        throw new Error(`HTTP 404: File not found - ${url}`);
+      }
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      // Verify we got a ZIP file (check content-type or first bytes)
+      const contentType = response.headers.get('content-type') || '';
+      if (contentType.includes('text/html')) {
+        console.log('Received HTML instead of ZIP - possible redirect or block page');
+        if (attempt < maxRetries) {
+          await randomSleep(2000, 5000);
+          continue;
+        }
+        throw new Error('Received HTML response instead of ZIP file');
+      }
+      
+      const buffer = await response.arrayBuffer();
+      
+      // Verify it's a valid ZIP (starts with PK magic bytes)
+      const bytes = new Uint8Array(buffer);
+      if (bytes.length < 4 || bytes[0] !== 0x50 || bytes[1] !== 0x4B) {
+        console.log('Downloaded file is not a valid ZIP');
+        if (attempt < maxRetries) {
+          await randomSleep(2000, 5000);
+          continue;
+        }
+        throw new Error('Downloaded file is not a valid ZIP archive');
+      }
+      
+      const fs = await import('fs');
+      fs.writeFileSync(destPath, Buffer.from(buffer));
+      
+      console.log(`Successfully downloaded to ${destPath} (${buffer.byteLength} bytes)`);
+      return true;
+      
+    } catch (error) {
+      console.error(`Attempt ${attempt} failed:`, error);
+      if (attempt === maxRetries) {
+        console.error(`All ${maxRetries} download attempts failed`);
+        throw error;
+      }
+    }
+  }
+  
+  return false;
 }
 
 /**
@@ -441,11 +558,15 @@ export async function scrapeFiscalYear(fiscalYear: number): Promise<ScrapeResult
     
     // Download if not already cached
     if (!existsSync(zipPath)) {
-      const downloaded = await downloadFile(url, zipPath);
-      if (!downloaded) {
-        result.error = 'Failed to download file';
+      try {
+        await downloadFile(url, zipPath);
+      } catch (error) {
+        result.error = error instanceof Error ? error.message : 'Failed to download file';
+        console.error(`Download failed for FY${fiscalYear}:`, error);
         return result;
       }
+    } else {
+      console.log(`Using cached file: ${zipPath}`);
     }
     
     // Extract CSV from ZIP

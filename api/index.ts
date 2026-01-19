@@ -27,6 +27,10 @@ import type { scrapeTransparentNH } from '../src/trigger/scrape-transparent-nh.j
 import type { scrapeNHDASContracts } from '../src/trigger/scrape-nh-das-contracts.js';
 import type { scrapeNHLicensing } from '../src/trigger/scrape-nh-licensing.js';
 import type { runFraudAnalysis } from '../src/trigger/run-fraud-analysis.js';
+import type { scrapeUSASpendingTask } from '../src/trigger/scrape-usaspending.js';
+import type { scrapeACFCCDFTask } from '../src/trigger/scrape-acf-ccdf.js';
+import { scrapeUSASpending, getNHStateOverview } from '../src/scraper/usaspending-scraper.js';
+import { scrapeACFData, getNHCCDFStats, getAvailableFiscalYears as getACFFiscalYears } from '../src/scraper/acf-ccdf-scraper.js';
 
 // Configure Trigger.dev with secret key
 configure({
@@ -853,6 +857,92 @@ app.post('/api/trigger/fraud-analysis', asyncHandler(async (req, res) => {
     console.error('Failed to trigger Fraud Analysis task:', error);
     res.status(500).json({ success: false, error: error.message });
   }
+}));
+
+// Trigger USAspending.gov Scraper
+app.post('/api/trigger/usaspending', asyncHandler(async (req, res) => {
+  const fiscalYear = req.body.fiscalYear || req.body.fiscal_year;
+  const includeSummary = req.body.includeSummary !== false;
+
+  try {
+    const handle = await tasks.trigger<typeof scrapeUSASpendingTask>('scrape-usaspending', {
+      fiscalYear: fiscalYear ? parseInt(fiscalYear) : undefined,
+      includeSummary,
+    });
+
+    res.json({
+      success: true,
+      runId: handle.id,
+      message: 'USAspending.gov scraper task triggered',
+    });
+  } catch (error: any) {
+    console.error('Failed to trigger USAspending task:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+}));
+
+// Trigger ACF CCDF Data Scraper
+app.post('/api/trigger/acf-ccdf', asyncHandler(async (req, res) => {
+  const fiscalYear = req.body.fiscalYear || req.body.fiscal_year;
+  const allYears = req.body.allYears || false;
+
+  try {
+    const handle = await tasks.trigger<typeof scrapeACFCCDFTask>('scrape-acf-ccdf', {
+      fiscalYear: fiscalYear ? parseInt(fiscalYear) : undefined,
+      allYears,
+    });
+
+    res.json({
+      success: true,
+      runId: handle.id,
+      message: 'ACF CCDF data scraper task triggered',
+    });
+  } catch (error: any) {
+    console.error('Failed to trigger ACF CCDF task:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+}));
+
+// Direct USAspending.gov endpoint (runs synchronously, for testing)
+app.post('/api/scraper/usaspending', asyncHandler(async (req, res) => {
+  await ensureInitialized();
+  const fiscalYear = req.body.fiscalYear || req.body.fiscal_year;
+  
+  const result = await scrapeUSASpending(fiscalYear ? parseInt(fiscalYear) : undefined);
+  res.json(result);
+}));
+
+// Get USAspending NH state overview
+app.get('/api/scraper/usaspending/overview', asyncHandler(async (req, res) => {
+  const overview = await getNHStateOverview();
+  res.json(overview || { error: 'Could not fetch overview' });
+}));
+
+// Direct ACF CCDF endpoint (runs synchronously, for testing)
+app.post('/api/scraper/acf-ccdf', asyncHandler(async (req, res) => {
+  await ensureInitialized();
+  const fiscalYear = req.body.fiscalYear || req.body.fiscal_year;
+  
+  const result = await scrapeACFData(fiscalYear ? parseInt(fiscalYear) : undefined);
+  res.json(result);
+}));
+
+// Get available ACF fiscal years
+app.get('/api/scraper/acf-ccdf/years', asyncHandler(async (req, res) => {
+  const years = getACFFiscalYears();
+  res.json({ years });
+}));
+
+// Get NH CCDF stats directly
+app.get('/api/scraper/acf-ccdf/stats/:year', asyncHandler(async (req, res) => {
+  const year = parseInt(req.params.year as string);
+  const stats = getNHCCDFStats(year);
+  
+  if (!stats) {
+    return res.status(404).json({ error: `No stats available for FY${year}` });
+  }
+  
+  res.json({ fiscalYear: year, ...stats });
 }));
 
 // Get Trigger.dev run status
