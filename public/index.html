@@ -313,10 +313,161 @@
     }
     footer a { color: var(--primary); }
     
+    /* Progress Bar Styles */
+    .progress-container {
+      margin: 1rem 0;
+      padding: 1rem;
+      background: var(--bg);
+      border-radius: 6px;
+      border: 1px solid var(--border);
+    }
+    .progress-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.5rem;
+    }
+    .progress-title {
+      font-weight: 500;
+      font-size: 0.875rem;
+    }
+    .progress-status {
+      font-size: 0.75rem;
+      padding: 0.2rem 0.5rem;
+      border-radius: 9999px;
+    }
+    .progress-status.running { background: #bee3f8; color: #2c5282; }
+    .progress-status.completed { background: #c6f6d5; color: #276749; }
+    .progress-status.failed { background: #fed7d7; color: #c53030; }
+    .progress-status.pending { background: #e2e8f0; color: #4a5568; }
+    .progress-bar-bg {
+      width: 100%;
+      height: 8px;
+      background: var(--border);
+      border-radius: 4px;
+      overflow: hidden;
+      margin-bottom: 0.5rem;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--primary), var(--primary-light));
+      border-radius: 4px;
+      transition: width 0.3s ease;
+    }
+    .progress-bar-fill.completed { background: linear-gradient(90deg, var(--success), #48bb78); }
+    .progress-bar-fill.failed { background: linear-gradient(90deg, var(--danger), #f56565); }
+    .progress-step {
+      font-size: 0.75rem;
+      color: var(--text-light);
+    }
+    .progress-stats {
+      display: flex;
+      gap: 1rem;
+      margin-top: 0.5rem;
+      font-size: 0.75rem;
+      color: var(--text-light);
+    }
+    .progress-stats span { display: flex; align-items: center; gap: 0.25rem; }
+    
+    /* Scraper Grid */
+    .scraper-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .scraper-card {
+      background: var(--card-bg);
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      padding: 1rem;
+    }
+    .scraper-card h4 {
+      font-size: 0.875rem;
+      margin-bottom: 0.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .scraper-card h4 .icon {
+      width: 24px;
+      height: 24px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+    }
+    .scraper-card p {
+      font-size: 0.75rem;
+      color: var(--text-light);
+      margin-bottom: 0.75rem;
+    }
+    .scraper-actions {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+    
+    /* Active Jobs Panel */
+    .active-jobs-panel {
+      background: var(--primary);
+      color: white;
+      border-radius: 8px;
+      padding: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .active-jobs-panel h3 {
+      font-size: 0.875rem;
+      margin-bottom: 0.75rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .active-jobs-panel .spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .active-jobs-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    .active-job-item {
+      background: rgba(255,255,255,0.1);
+      border-radius: 6px;
+      padding: 0.75rem;
+    }
+    .active-job-item .job-name {
+      font-weight: 500;
+      font-size: 0.875rem;
+    }
+    .active-job-item .job-progress {
+      margin-top: 0.5rem;
+    }
+    .active-job-item .progress-bar-bg {
+      background: rgba(255,255,255,0.2);
+    }
+    .active-job-item .progress-bar-fill {
+      background: white;
+    }
+    .active-job-item .job-step {
+      font-size: 0.75rem;
+      opacity: 0.8;
+      margin-top: 0.25rem;
+    }
+    
     @media (max-width: 768px) {
       main { padding: 1rem; }
       .stats-grid { grid-template-columns: repeat(2, 1fr); }
       .charts-grid { grid-template-columns: 1fr; }
+      .scraper-grid { grid-template-columns: 1fr; }
       table { font-size: 0.75rem; }
       th, td { padding: 0.5rem; }
     }
@@ -536,89 +687,126 @@
         <p style="font-size:0.85rem;">Import data from TransparentNH, scrape NH DAS contracts, and run fraud analysis. All data integrates into the common database.</p>
       </div>
       
-      <!-- CSV Import -->
+      <!-- Active Jobs Panel (shows when scrapers are running) -->
+      <div id="active-jobs-panel" class="active-jobs-panel" style="display:none;">
+        <h3><span class="spinner"></span> Active Scraper Jobs</h3>
+        <div id="active-jobs-list" class="active-jobs-list"></div>
+      </div>
+      
+      <!-- Scraper Cards Grid -->
       <div class="card">
         <div class="card-header">
-          <h2>Import TransparentNH CSV</h2>
+          <h2>Data Scrapers</h2>
+          <button class="btn btn-sm btn-outline" onclick="refreshJobStatus()">Refresh Status</button>
         </div>
         <div class="card-body">
-          <p style="margin-bottom:1rem;color:var(--text-light);">
-            Upload a CSV export from <a href="https://business.nh.gov/ExpenditureTransparency/" target="_blank">TransparentNH Expenditure Register</a>. 
-            The importer will normalize column names and match vendors to existing providers.
-          </p>
-          <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:center;margin-bottom:1rem;">
-            <input type="file" id="csv-file" accept=".csv" style="flex:1;min-width:200px;">
-            <label style="display:flex;align-items:center;gap:0.5rem;">
-              <input type="checkbox" id="filter-childcare" checked>
-              Filter to childcare only
-            </label>
-            <label style="display:flex;align-items:center;gap:0.5rem;">
-              <input type="checkbox" id="create-providers">
-              Auto-create providers
-            </label>
-            <button class="btn" onclick="importCSV()">Import CSV</button>
+          <div class="scraper-grid">
+            <!-- TransparentNH Scraper -->
+            <div class="scraper-card">
+              <h4>
+                <span class="icon" style="background:#38a169;color:white;">$</span>
+                TransparentNH Expenditures
+              </h4>
+              <p>Download official expenditure data from NH state budget transparency portal. Filters for DHHS childcare payments.</p>
+              <div style="margin-bottom:0.75rem;">
+                <select id="fiscal-year-select" style="width:100%;padding:0.5rem;border:1px solid var(--border);border-radius:4px;font-size:0.875rem;">
+                  <option value="">Loading years...</option>
+                </select>
+              </div>
+              <div class="scraper-actions">
+                <button class="btn btn-sm" onclick="startTransparentNHScraper()">Scrape Year</button>
+                <button class="btn btn-sm btn-outline" onclick="startTransparentNHRecent()">Last 3 Years</button>
+              </div>
+              <div id="transparent-nh-progress" style="display:none;"></div>
+            </div>
+            
+            <!-- NH DAS Contracts Scraper -->
+            <div class="scraper-card">
+              <h4>
+                <span class="icon" style="background:#2c5282;color:white;">C</span>
+                NH DAS Contracts
+              </h4>
+              <p>Search state contracts database for childcare-related vendor agreements and DHHS contracts.</p>
+              <div style="margin-bottom:0.75rem;">
+                <input type="text" id="scrape-keyword" placeholder="Search keyword" value="daycare" 
+                       style="width:100%;padding:0.5rem;border:1px solid var(--border);border-radius:4px;font-size:0.875rem;">
+              </div>
+              <div class="scraper-actions">
+                <button class="btn btn-sm" onclick="startContractsScraper()">Search</button>
+                <button class="btn btn-sm btn-outline" onclick="startFullContractsScraper()">Full Scrape</button>
+              </div>
+              <div id="contracts-progress" style="display:none;"></div>
+            </div>
+            
+            <!-- Fraud Analysis -->
+            <div class="scraper-card">
+              <h4>
+                <span class="icon" style="background:#e53e3e;color:white;">!</span>
+                Fraud Analysis
+              </h4>
+              <p>Run fraud detection algorithms: structuring patterns, duplicate payments, vendor concentration analysis.</p>
+              <div class="scraper-actions">
+                <button class="btn btn-sm" onclick="startFraudAnalysis()">Run Full Analysis</button>
+                <button class="btn btn-sm btn-outline" onclick="detectStructuring()">Structuring</button>
+                <button class="btn btn-sm btn-outline" onclick="detectDuplicates()">Duplicates</button>
+              </div>
+              <div id="fraud-progress" style="display:none;"></div>
+            </div>
+            
+            <!-- CSV Import -->
+            <div class="scraper-card">
+              <h4>
+                <span class="icon" style="background:#718096;color:white;">+</span>
+                Manual CSV Import
+              </h4>
+              <p>Upload a CSV export from TransparentNH Expenditure Register for manual import.</p>
+              <div style="margin-bottom:0.75rem;">
+                <input type="file" id="csv-file" accept=".csv" style="width:100%;font-size:0.75rem;">
+              </div>
+              <div style="margin-bottom:0.75rem;display:flex;gap:0.5rem;flex-wrap:wrap;">
+                <label style="display:flex;align-items:center;gap:0.25rem;font-size:0.75rem;">
+                  <input type="checkbox" id="filter-childcare" checked> Childcare only
+                </label>
+                <label style="display:flex;align-items:center;gap:0.25rem;font-size:0.75rem;">
+                  <input type="checkbox" id="create-providers"> Auto-create providers
+                </label>
+              </div>
+              <div class="scraper-actions">
+                <button class="btn btn-sm" onclick="importCSV()">Import CSV</button>
+              </div>
+            </div>
           </div>
-          <div id="import-result" style="display:none;"></div>
         </div>
       </div>
       
-      <!-- TransparentNH Auto-Scraper -->
+      <!-- Job History -->
       <div class="card">
         <div class="card-header">
-          <h2>Scrape TransparentNH Expenditures</h2>
+          <h2>Recent Scraper Jobs</h2>
+          <button class="btn btn-sm btn-outline" onclick="loadJobHistory()">Refresh</button>
         </div>
-        <div class="card-body">
-          <p style="margin-bottom:1rem;color:var(--text-light);">
-            Automatically download and import official expenditure data from 
-            <a href="https://www.nh.gov/transparentnh/where-the-money-goes/fiscal-yr-downloads.htm" target="_blank">TransparentNH Fiscal Year Downloads</a>. 
-            Filters for childcare-related payments and DHHS expenditures.
-          </p>
-          <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:center;margin-bottom:1rem;">
-            <select id="fiscal-year-select" style="padding:0.6rem;min-width:150px;">
-              <option value="">Loading years...</option>
-            </select>
-            <button class="btn" onclick="scrapeTransparentNH()">Scrape Selected Year</button>
-            <button class="btn btn-outline" onclick="scrapeRecentYears()">Scrape Recent Years (3)</button>
-          </div>
-          <div id="transparent-nh-result" style="display:none;"></div>
+        <div class="card-body" style="overflow-x:auto;">
+          <table id="job-history-table">
+            <thead>
+              <tr>
+                <th>Scraper</th>
+                <th>Status</th>
+                <th>Progress</th>
+                <th>Found</th>
+                <th>Imported</th>
+                <th>Started</th>
+                <th>Duration</th>
+              </tr>
+            </thead>
+            <tbody id="job-history-body">
+              <tr><td colspan="7" class="loading">Loading job history...</td></tr>
+            </tbody>
+          </table>
         </div>
       </div>
       
-      <!-- NH DAS Scraper -->
-      <div class="card">
-        <div class="card-header">
-          <h2>Scrape NH DAS Contracts</h2>
-        </div>
-        <div class="card-body">
-          <p style="margin-bottom:1rem;color:var(--text-light);">
-            Search the <a href="https://apps.das.nh.gov/bidscontracts/contracts.aspx" target="_blank">NH DAS Bids & Contracts</a> site for childcare-related contracts.
-          </p>
-          <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem;">
-            <input type="text" id="scrape-keyword" placeholder="Search keyword (e.g., daycare)" value="daycare" style="flex:1;min-width:200px;padding:0.6rem;">
-            <button class="btn" onclick="scrapeContracts()">Search Keyword</button>
-            <button class="btn btn-outline" onclick="scrapeAllChildcare()">Full Childcare Scrape</button>
-          </div>
-          <div id="scrape-result" style="display:none;"></div>
-        </div>
-      </div>
-      
-      <!-- Fraud Analysis -->
-      <div class="card">
-        <div class="card-header">
-          <h2>Fraud Analysis Tools</h2>
-        </div>
-        <div class="card-body">
-          <p style="margin-bottom:1rem;color:var(--text-light);">
-            Run automated fraud detection algorithms to identify structuring, duplicates, and suspicious patterns.
-          </p>
-          <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem;">
-            <button class="btn" onclick="runFraudAnalysis()">Run Full Analysis</button>
-            <button class="btn btn-outline" onclick="detectStructuring()">Detect Structuring</button>
-            <button class="btn btn-outline" onclick="detectDuplicates()">Find Duplicates</button>
-          </div>
-          <div id="analysis-result" style="display:none;"></div>
-        </div>
-      </div>
+      <!-- Import Results -->
+      <div id="import-result" style="display:none;"></div>
       
       <!-- Structuring Detection Results -->
       <div class="card" id="structuring-card" style="display:none;">
@@ -1229,30 +1417,13 @@
     }
     
     // ============================================
-    // Import & Analysis Tools
+    // Import & Analysis Tools (Legacy - kept for compatibility)
     // ============================================
     
-    // Load tools view (fetch available fiscal years)
-    async function loadToolsView() {
-      try {
-        const response = await fetch(`${API_BASE}/scraper/transparent-nh/years`);
-        const data = await response.json();
-        
-        const select = document.getElementById('fiscal-year-select');
-        select.innerHTML = data.years.map(year => 
-          `<option value="${year}">FY ${year}</option>`
-        ).join('');
-      } catch (err) {
-        console.error('Error loading fiscal years:', err);
-        document.getElementById('fiscal-year-select').innerHTML = 
-          '<option value="">Error loading years</option>';
-      }
-    }
-    
-    // TransparentNH Scraper
+    // TransparentNH Scraper (legacy, non-job-tracked version)
     async function scrapeTransparentNH() {
       const fiscalYear = document.getElementById('fiscal-year-select').value;
-      const resultDiv = document.getElementById('transparent-nh-result');
+      const resultDiv = document.getElementById('import-result');
       
       if (!fiscalYear) {
         alert('Please select a fiscal year');
@@ -1607,6 +1778,322 @@
           <td class="amount">${formatCurrency(v.average_amount)}</td>
         </tr>
       `).join('');
+    }
+    
+    // ============================================
+    // SCRAPER JOB MANAGEMENT (NEW)
+    // ============================================
+    
+    let activeJobPollers = {};
+    
+    // Load tools view - fetch fiscal years and job history
+    async function loadToolsView() {
+      try {
+        // Load fiscal years
+        const yearsResponse = await fetch(`${API_BASE}/scraper/transparent-nh/years`);
+        const yearsData = await yearsResponse.json();
+        
+        const select = document.getElementById('fiscal-year-select');
+        select.innerHTML = yearsData.years.map(year => 
+          `<option value="${year}">FY ${year}</option>`
+        ).join('');
+        
+        // Load job history
+        await loadJobHistory();
+        
+        // Check for active jobs
+        await refreshJobStatus();
+      } catch (err) {
+        console.error('Error loading tools view:', err);
+      }
+    }
+    
+    // Load job history table
+    async function loadJobHistory() {
+      try {
+        const response = await fetch(`${API_BASE}/scraper/jobs`);
+        const jobs = await response.json();
+        
+        const tbody = document.getElementById('job-history-body');
+        
+        if (jobs.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-light);">No scraper jobs yet</td></tr>';
+          return;
+        }
+        
+        tbody.innerHTML = jobs.map(job => {
+          const duration = job.completed_at 
+            ? formatDuration(new Date(job.started_at), new Date(job.completed_at))
+            : 'Running...';
+          
+          return `
+            <tr>
+              <td><strong>${formatScraperName(job.scraper_name)}</strong></td>
+              <td><span class="progress-status ${job.status}">${job.status}</span></td>
+              <td>
+                <div class="progress-bar-bg" style="width:80px;height:6px;">
+                  <div class="progress-bar-fill ${job.status}" style="width:${job.progress}%;"></div>
+                </div>
+              </td>
+              <td>${job.records_found || 0}</td>
+              <td>${job.records_imported || 0}</td>
+              <td>${formatTime(job.started_at)}</td>
+              <td>${duration}</td>
+            </tr>
+          `;
+        }).join('');
+      } catch (err) {
+        console.error('Error loading job history:', err);
+        document.getElementById('job-history-body').innerHTML = 
+          '<tr><td colspan="7" style="color:var(--danger);">Error loading jobs</td></tr>';
+      }
+    }
+    
+    // Refresh active job status
+    async function refreshJobStatus() {
+      try {
+        const response = await fetch(`${API_BASE}/scraper/jobs`);
+        const jobs = await response.json();
+        
+        const runningJobs = jobs.filter(j => j.status === 'running');
+        const panel = document.getElementById('active-jobs-panel');
+        const list = document.getElementById('active-jobs-list');
+        
+        if (runningJobs.length === 0) {
+          panel.style.display = 'none';
+          return;
+        }
+        
+        panel.style.display = 'block';
+        list.innerHTML = runningJobs.map(job => `
+          <div class="active-job-item">
+            <div class="job-name">${formatScraperName(job.scraper_name)}</div>
+            <div class="job-progress">
+              <div class="progress-bar-bg">
+                <div class="progress-bar-fill" style="width:${job.progress}%;"></div>
+              </div>
+            </div>
+            <div class="job-step">${job.current_step || 'Processing...'} (${job.progress}%)</div>
+          </div>
+        `).join('');
+        
+        // Start polling for running jobs
+        runningJobs.forEach(job => {
+          if (!activeJobPollers[job.id]) {
+            startJobPolling(job.id);
+          }
+        });
+      } catch (err) {
+        console.error('Error refreshing job status:', err);
+      }
+    }
+    
+    // Poll a specific job for updates
+    function startJobPolling(jobId) {
+      if (activeJobPollers[jobId]) return;
+      
+      activeJobPollers[jobId] = setInterval(async () => {
+        try {
+          const response = await fetch(`${API_BASE}/scraper/jobs/${jobId}`);
+          const job = await response.json();
+          
+          // Update the active jobs panel
+          await refreshJobStatus();
+          
+          // If job is complete, stop polling and refresh history
+          if (job.status !== 'running') {
+            clearInterval(activeJobPollers[jobId]);
+            delete activeJobPollers[jobId];
+            await loadJobHistory();
+            
+            // Show completion notification
+            showJobNotification(job);
+          }
+        } catch (err) {
+          console.error('Error polling job:', err);
+          clearInterval(activeJobPollers[jobId]);
+          delete activeJobPollers[jobId];
+        }
+      }, 2000); // Poll every 2 seconds
+    }
+    
+    // Show job completion notification
+    function showJobNotification(job) {
+      const resultDiv = document.getElementById('import-result');
+      resultDiv.style.display = 'block';
+      
+      if (job.status === 'completed') {
+        resultDiv.innerHTML = `
+          <div class="alert-box" style="background:#c6f6d5;border-color:#38a169;">
+            <h4 style="color:#276749;">${formatScraperName(job.scraper_name)} Complete</h4>
+            <ul style="margin-left:1.5rem;font-size:0.85rem;">
+              <li>Records found: ${job.records_found || 0}</li>
+              <li>Records imported: ${job.records_imported || 0}</li>
+            </ul>
+          </div>
+        `;
+      } else if (job.status === 'failed') {
+        resultDiv.innerHTML = `
+          <div class="alert-box danger">
+            <h4>${formatScraperName(job.scraper_name)} Failed</h4>
+            <p>${job.errors || 'Unknown error'}</p>
+          </div>
+        `;
+      }
+    }
+    
+    // Start TransparentNH scraper with job tracking
+    async function startTransparentNHScraper() {
+      const fiscalYear = document.getElementById('fiscal-year-select').value;
+      
+      if (!fiscalYear) {
+        alert('Please select a fiscal year');
+        return;
+      }
+      
+      try {
+        const response = await fetch(`${API_BASE}/scraper/transparent-nh/start`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fiscalYear: parseInt(fiscalYear) }),
+        });
+        
+        const result = await response.json();
+        
+        if (result.jobId) {
+          startJobPolling(result.jobId);
+          await refreshJobStatus();
+        }
+      } catch (err) {
+        console.error('Error starting scraper:', err);
+        alert('Error starting scraper: ' + err.message);
+      }
+    }
+    
+    // Start TransparentNH recent years scraper
+    async function startTransparentNHRecent() {
+      try {
+        const response = await fetch(`${API_BASE}/scraper/transparent-nh/recent`, {
+          method: 'POST',
+        });
+        
+        const result = await response.json();
+        
+        // Show result directly (this one doesn't have job tracking yet)
+        const resultDiv = document.getElementById('import-result');
+        resultDiv.style.display = 'block';
+        
+        if (result.success) {
+          const yearResults = result.results.map(r => 
+            `<li>FY${r.fiscalYear}: ${r.success ? r.importedRecords + ' imported' : 'Failed'}</li>`
+          ).join('');
+          
+          resultDiv.innerHTML = `
+            <div class="alert-box" style="background:#c6f6d5;border-color:#38a169;">
+              <h4 style="color:#276749;">Recent Years Scrape Complete</h4>
+              <ul style="margin-left:1.5rem;font-size:0.85rem;">
+                <li>Years scraped: ${result.years_scraped}</li>
+                <li>Total imported: ${result.imported_records}</li>
+                <li>Total amount: ${formatCurrency(result.total_amount)}</li>
+              </ul>
+              <p style="margin-top:0.5rem;font-weight:600;">By Year:</p>
+              <ul style="margin-left:1.5rem;font-size:0.85rem;">${yearResults}</ul>
+            </div>
+          `;
+        } else {
+          resultDiv.innerHTML = `<div class="alert-box danger"><h4>Error</h4><p>Scrape failed</p></div>`;
+        }
+      } catch (err) {
+        console.error('Error starting scraper:', err);
+        alert('Error starting scraper: ' + err.message);
+      }
+    }
+    
+    // Start contracts scraper with job tracking
+    async function startContractsScraper() {
+      const keyword = document.getElementById('scrape-keyword').value || 'daycare';
+      
+      try {
+        const response = await fetch(`${API_BASE}/scraper/contracts/start`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ keyword }),
+        });
+        
+        const result = await response.json();
+        
+        if (result.jobId) {
+          startJobPolling(result.jobId);
+          await refreshJobStatus();
+        }
+      } catch (err) {
+        console.error('Error starting scraper:', err);
+        alert('Error starting scraper: ' + err.message);
+      }
+    }
+    
+    // Start full contracts scraper with job tracking
+    async function startFullContractsScraper() {
+      try {
+        const response = await fetch(`${API_BASE}/scraper/contracts/full/start`, {
+          method: 'POST',
+        });
+        
+        const result = await response.json();
+        
+        if (result.jobId) {
+          startJobPolling(result.jobId);
+          await refreshJobStatus();
+        }
+      } catch (err) {
+        console.error('Error starting scraper:', err);
+        alert('Error starting scraper: ' + err.message);
+      }
+    }
+    
+    // Start fraud analysis with job tracking
+    async function startFraudAnalysis() {
+      try {
+        const response = await fetch(`${API_BASE}/analyze/fraud/start`, {
+          method: 'POST',
+        });
+        
+        const result = await response.json();
+        
+        if (result.jobId) {
+          startJobPolling(result.jobId);
+          await refreshJobStatus();
+        }
+      } catch (err) {
+        console.error('Error starting analysis:', err);
+        alert('Error starting analysis: ' + err.message);
+      }
+    }
+    
+    // Helper: Format scraper name for display
+    function formatScraperName(name) {
+      const names = {
+        'transparent-nh': 'TransparentNH Expenditures',
+        'nh-das-contracts': 'NH DAS Contracts',
+        'nh-das-full': 'NH DAS Full Scrape',
+        'fraud-analysis': 'Fraud Analysis',
+      };
+      return names[name] || name;
+    }
+    
+    // Helper: Format duration
+    function formatDuration(start, end) {
+      const diff = (end - start) / 1000; // seconds
+      if (diff < 60) return `${Math.round(diff)}s`;
+      if (diff < 3600) return `${Math.round(diff / 60)}m`;
+      return `${Math.round(diff / 3600)}h`;
+    }
+    
+    // Helper: Format time for display
+    function formatTime(isoString) {
+      if (!isoString) return '-';
+      const date = new Date(isoString);
+      return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
     }
     
     // Initial load

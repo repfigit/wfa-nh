@@ -563,6 +563,286 @@ app.get('/api/admin/db-info', asyncHandler(async (req, res) => {
   res.json(env);
 }));
 
+// ============================================
+// SCRAPER JOB MANAGEMENT
+// ============================================
+
+// Create scrape_jobs table if not exists
+async function ensureScrapeJobsTable() {
+  await execute(`
+    CREATE TABLE IF NOT EXISTS scrape_jobs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      scraper_name TEXT NOT NULL,
+      status TEXT DEFAULT 'pending',
+      progress INTEGER DEFAULT 0,
+      total_steps INTEGER DEFAULT 100,
+      current_step TEXT,
+      records_found INTEGER DEFAULT 0,
+      records_imported INTEGER DEFAULT 0,
+      errors TEXT,
+      started_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      completed_at TEXT,
+      result_summary TEXT
+    )
+  `);
+}
+
+// Create a new scrape job
+async function createScrapeJob(scraperName: string, totalSteps: number = 100): Promise<number> {
+  await ensureScrapeJobsTable();
+  const result = await execute(
+    `INSERT INTO scrape_jobs (scraper_name, status, progress, total_steps, current_step) 
+     VALUES (?, 'running', 0, ?, 'Initializing...')`,
+    [scraperName, totalSteps]
+  );
+  return result.lastId || 0;
+}
+
+// Update scrape job progress
+async function updateScrapeJob(jobId: number, updates: {
+  progress?: number;
+  current_step?: string;
+  records_found?: number;
+  records_imported?: number;
+  status?: string;
+  errors?: string;
+  result_summary?: string;
+}) {
+  const setParts: string[] = [];
+  const params: any[] = [];
+  
+  if (updates.progress !== undefined) { setParts.push('progress = ?'); params.push(updates.progress); }
+  if (updates.current_step !== undefined) { setParts.push('current_step = ?'); params.push(updates.current_step); }
+  if (updates.records_found !== undefined) { setParts.push('records_found = ?'); params.push(updates.records_found); }
+  if (updates.records_imported !== undefined) { setParts.push('records_imported = ?'); params.push(updates.records_imported); }
+  if (updates.status !== undefined) { setParts.push('status = ?'); params.push(updates.status); }
+  if (updates.errors !== undefined) { setParts.push('errors = ?'); params.push(updates.errors); }
+  if (updates.result_summary !== undefined) { setParts.push('result_summary = ?'); params.push(updates.result_summary); }
+  
+  if (updates.status === 'completed' || updates.status === 'failed') {
+    setParts.push("completed_at = datetime('now')");
+  }
+  
+  if (setParts.length > 0) {
+    params.push(jobId);
+    await execute(`UPDATE scrape_jobs SET ${setParts.join(', ')} WHERE id = ?`, params);
+  }
+}
+
+// Get all scrape jobs
+app.get('/api/scraper/jobs', asyncHandler(async (req, res) => {
+  await ensureInitialized();
+  await ensureScrapeJobsTable();
+  const jobs = await query('SELECT * FROM scrape_jobs ORDER BY started_at DESC LIMIT 50');
+  res.json(jobs);
+}));
+
+// Get specific job status
+app.get('/api/scraper/jobs/:id', asyncHandler(async (req, res) => {
+  await ensureInitialized();
+  await ensureScrapeJobsTable();
+  const jobId = parseInt(req.params.id as string);
+  const jobs = await query('SELECT * FROM scrape_jobs WHERE id = ?', [jobId]);
+  if (jobs.length === 0) {
+    return res.status(404).json({ error: 'Job not found' });
+  }
+  res.json(jobs[0]);
+}));
+
+// Get active/running jobs
+app.get('/api/scraper/jobs/active', asyncHandler(async (req, res) => {
+  await ensureInitialized();
+  await ensureScrapeJobsTable();
+  const jobs = await query("SELECT * FROM scrape_jobs WHERE status = 'running' ORDER BY started_at DESC");
+  res.json(jobs);
+}));
+
+// ============================================
+// INDIVIDUAL SCRAPER ENDPOINTS
+// ============================================
+
+// TransparentNH Scraper with job tracking
+app.post('/api/scraper/transparent-nh/start', asyncHandler(async (req, res) => {
+  await ensureInitialized();
+  const fiscalYear = req.body.fiscalYear || req.body.fiscal_year || new Date().getFullYear();
+  
+  // Create job
+  const jobId = await createScrapeJob('transparent-nh', 5);
+  
+  // Return immediately with job ID
+  res.json({ jobId, message: 'Scraper started', status: 'running' });
+  
+  // Run scraper in background
+  (async () => {
+    try {
+      await updateScrapeJob(jobId, { progress: 10, current_step: 'Fetching fiscal year data...' });
+      const result = await scrapeFiscalYear(fiscalYear);
+      
+      await updateScrapeJob(jobId, { 
+        progress: 100, 
+        status: 'completed',
+        records_found: result.totalRecords,
+        records_imported: result.importedRecords,
+        current_step: 'Complete',
+        result_summary: JSON.stringify(result)
+      });
+    } catch (error: any) {
+      await updateScrapeJob(jobId, { 
+        status: 'failed', 
+        errors: error.message,
+        current_step: 'Failed'
+      });
+    }
+  })();
+}));
+
+// NH DAS Contracts Scraper with job tracking  
+app.post('/api/scraper/contracts/start', asyncHandler(async (req, res) => {
+  await ensureInitialized();
+  const keyword = req.body.keyword || 'childcare';
+  
+  // Create job
+  const jobId = await createScrapeJob('nh-das-contracts', 10);
+  
+  // Return immediately with job ID
+  res.json({ jobId, message: 'Scraper started', status: 'running' });
+  
+  // Run scraper in background
+  (async () => {
+    try {
+      await updateScrapeJob(jobId, { progress: 10, current_step: `Searching for "${keyword}" contracts...` });
+      
+      const result = await searchContracts(keyword);
+      
+      if (result.success && result.contracts.length > 0) {
+        await updateScrapeJob(jobId, { progress: 50, current_step: 'Saving contracts to database...' });
+        const savedCount = await saveScrapedContracts(result.contracts);
+        
+        await updateScrapeJob(jobId, { 
+          progress: 100, 
+          status: 'completed',
+          records_found: result.contracts.length,
+          records_imported: savedCount,
+          current_step: 'Complete',
+          result_summary: JSON.stringify({ ...result, savedCount })
+        });
+      } else {
+        await updateScrapeJob(jobId, { 
+          progress: 100, 
+          status: 'completed',
+          records_found: 0,
+          records_imported: 0,
+          current_step: 'Complete - No results',
+          result_summary: JSON.stringify(result)
+        });
+      }
+    } catch (error: any) {
+      await updateScrapeJob(jobId, { 
+        status: 'failed', 
+        errors: error.message,
+        current_step: 'Failed'
+      });
+    }
+  })();
+}));
+
+// Full childcare contracts scraper
+app.post('/api/scraper/contracts/full/start', asyncHandler(async (req, res) => {
+  await ensureInitialized();
+  
+  // Create job
+  const jobId = await createScrapeJob('nh-das-full', CHILDCARE_KEYWORDS.length);
+  
+  // Return immediately with job ID
+  res.json({ jobId, message: 'Full scraper started', status: 'running', keywords: CHILDCARE_KEYWORDS });
+  
+  // Run scraper in background
+  (async () => {
+    try {
+      let totalFound = 0;
+      let totalImported = 0;
+      const errors: string[] = [];
+      
+      for (let i = 0; i < CHILDCARE_KEYWORDS.length; i++) {
+        const keyword = CHILDCARE_KEYWORDS[i];
+        await updateScrapeJob(jobId, { 
+          progress: Math.round(((i + 1) / CHILDCARE_KEYWORDS.length) * 100),
+          current_step: `Searching: "${keyword}" (${i + 1}/${CHILDCARE_KEYWORDS.length})...`
+        });
+        
+        try {
+          const result = await searchContracts(keyword);
+          if (result.success && result.contracts.length > 0) {
+            totalFound += result.contracts.length;
+            const savedCount = await saveScrapedContracts(result.contracts);
+            totalImported += savedCount;
+          }
+        } catch (err: any) {
+          errors.push(`${keyword}: ${err.message}`);
+        }
+        
+        // Small delay between requests
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+      
+      await updateScrapeJob(jobId, { 
+        progress: 100, 
+        status: errors.length === CHILDCARE_KEYWORDS.length ? 'failed' : 'completed',
+        records_found: totalFound,
+        records_imported: totalImported,
+        current_step: 'Complete',
+        errors: errors.length > 0 ? errors.join('; ') : undefined,
+        result_summary: JSON.stringify({ totalFound, totalImported, errors })
+      });
+    } catch (error: any) {
+      await updateScrapeJob(jobId, { 
+        status: 'failed', 
+        errors: error.message,
+        current_step: 'Failed'
+      });
+    }
+  })();
+}));
+
+// Fraud Analysis with job tracking
+app.post('/api/analyze/fraud/start', asyncHandler(async (req, res) => {
+  await ensureInitialized();
+  
+  // Create job
+  const jobId = await createScrapeJob('fraud-analysis', 4);
+  
+  // Return immediately with job ID
+  res.json({ jobId, message: 'Fraud analysis started', status: 'running' });
+  
+  // Run analysis in background
+  (async () => {
+    try {
+      await updateScrapeJob(jobId, { progress: 25, current_step: 'Detecting structuring patterns...' });
+      await updateScrapeJob(jobId, { progress: 50, current_step: 'Finding duplicate payments...' });
+      await updateScrapeJob(jobId, { progress: 75, current_step: 'Analyzing vendor concentration...' });
+      
+      const result = await runFullFraudAnalysis();
+      
+      const totalIndicators = result.structuring.length + result.duplicates.length + result.vendorConcentration.length;
+      
+      await updateScrapeJob(jobId, { 
+        progress: 100, 
+        status: 'completed',
+        records_found: totalIndicators,
+        records_imported: result.savedIndicators || 0,
+        current_step: 'Complete',
+        result_summary: JSON.stringify(result)
+      });
+    } catch (error: any) {
+      await updateScrapeJob(jobId, { 
+        status: 'failed', 
+        errors: error.message,
+        current_step: 'Failed'
+      });
+    }
+  })();
+}));
+
 // Search
 app.get('/api/search', asyncHandler(async (req, res) => {
   await ensureInitialized();

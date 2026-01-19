@@ -151,6 +151,22 @@ CREATE TABLE IF NOT EXISTS scrape_logs (
   error_message TEXT
 );
 
+-- Scrape Jobs (real-time progress tracking)
+CREATE TABLE IF NOT EXISTS scrape_jobs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  scraper_name TEXT NOT NULL,
+  status TEXT DEFAULT 'pending',
+  progress INTEGER DEFAULT 0,
+  total_steps INTEGER DEFAULT 100,
+  current_step TEXT,
+  records_found INTEGER DEFAULT 0,
+  records_imported INTEGER DEFAULT 0,
+  errors TEXT,
+  started_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  completed_at TEXT,
+  result_summary TEXT
+);
+
 -- Keyword Analysis for detecting childcare-related entries
 CREATE TABLE IF NOT EXISTS keywords (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
