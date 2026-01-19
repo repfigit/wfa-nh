@@ -1,11 +1,12 @@
 /**
- * PostgreSQL Schema for NH Childcare Payments Tracker
+ * Turso/libSQL Schema for NH Childcare Payments Tracker
+ * Note: Turso uses SQLite syntax, not PostgreSQL
  */
 
 export const postgresSchema = `
 -- Childcare Providers (Daycares)
 CREATE TABLE IF NOT EXISTS providers (
-  id SERIAL PRIMARY KEY,
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
   dba_name TEXT,
   address TEXT,
@@ -29,30 +30,30 @@ CREATE TABLE IF NOT EXISTS providers (
   accepts_ccdf INTEGER DEFAULT 0,
   ccdf_provider_id TEXT,
   notes TEXT,
-  created_at TIMESTAMP DEFAULT NOW(),
-  updated_at TIMESTAMP DEFAULT NOW()
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
 -- CCDF Scholarship Payments
 CREATE TABLE IF NOT EXISTS payments (
-  id SERIAL PRIMARY KEY,
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
   provider_id INTEGER REFERENCES providers(id),
   fiscal_year INTEGER,
   fiscal_month INTEGER,
-  amount DOUBLE PRECISION,
+  amount REAL,
   children_served INTEGER,
   payment_type TEXT,
   funding_source TEXT,
   program_type TEXT,
   check_number TEXT,
-  payment_date DATE,
+  payment_date TEXT,
   notes TEXT,
-  created_at TIMESTAMP DEFAULT NOW()
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Contractors (Vendors from contracts)
 CREATE TABLE IF NOT EXISTS contractors (
-  id SERIAL PRIMARY KEY,
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
   dba_name TEXT,
   address TEXT,
@@ -62,33 +63,33 @@ CREATE TABLE IF NOT EXISTS contractors (
   is_immigrant_owned INTEGER DEFAULT 0,
   owner_background TEXT,
   vendor_id TEXT,
-  created_at TIMESTAMP DEFAULT NOW()
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
 -- State Contracts
 CREATE TABLE IF NOT EXISTS contracts (
-  id SERIAL PRIMARY KEY,
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
   contractor_id INTEGER REFERENCES contractors(id),
   contract_number TEXT,
   description TEXT,
   department TEXT,
   agency TEXT,
-  start_date DATE,
-  end_date DATE,
-  original_amount DOUBLE PRECISION,
-  current_amount DOUBLE PRECISION,
+  start_date TEXT,
+  end_date TEXT,
+  original_amount REAL,
+  current_amount REAL,
   status TEXT,
   contract_type TEXT,
   source_url TEXT,
-  approval_date DATE,
+  approval_date TEXT,
   gc_item_number TEXT,
   notes TEXT,
-  created_at TIMESTAMP DEFAULT NOW()
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Expenditure Records (from TransparentNH)
 CREATE TABLE IF NOT EXISTS expenditures (
-  id SERIAL PRIMARY KEY,
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
   provider_id INTEGER REFERENCES providers(id),
   contractor_id INTEGER REFERENCES contractors(id),
   contract_id INTEGER REFERENCES contracts(id),
@@ -98,17 +99,17 @@ CREATE TABLE IF NOT EXISTS expenditures (
   activity TEXT,
   expense_class TEXT,
   vendor_name TEXT,
-  amount DOUBLE PRECISION,
-  payment_date DATE,
+  amount REAL,
+  payment_date TEXT,
   check_number TEXT,
   description TEXT,
   source_url TEXT,
-  created_at TIMESTAMP DEFAULT NOW()
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Fraud Indicators
 CREATE TABLE IF NOT EXISTS fraud_indicators (
-  id SERIAL PRIMARY KEY,
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
   provider_id INTEGER REFERENCES providers(id),
   contract_id INTEGER REFERENCES contracts(id),
   contractor_id INTEGER REFERENCES contractors(id),
@@ -118,32 +119,32 @@ CREATE TABLE IF NOT EXISTS fraud_indicators (
   severity TEXT DEFAULT 'medium',
   description TEXT,
   evidence TEXT,
-  amount_flagged DOUBLE PRECISION,
+  amount_flagged REAL,
   status TEXT DEFAULT 'open',
   reviewed_by TEXT,
-  reviewed_at TIMESTAMP,
+  reviewed_at TEXT,
   notes TEXT,
-  created_at TIMESTAMP DEFAULT NOW(),
-  updated_at TIMESTAMP DEFAULT NOW()
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Data Sources Reference
 CREATE TABLE IF NOT EXISTS data_sources (
-  id SERIAL PRIMARY KEY,
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL UNIQUE,
   url TEXT,
   type TEXT,
-  last_scraped TIMESTAMP,
+  last_scraped TEXT,
   notes TEXT,
-  created_at TIMESTAMP DEFAULT NOW()
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Scrape Logs
 CREATE TABLE IF NOT EXISTS scrape_logs (
-  id SERIAL PRIMARY KEY,
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
   data_source_id INTEGER REFERENCES data_sources(id),
-  started_at TIMESTAMP DEFAULT NOW(),
-  completed_at TIMESTAMP,
+  started_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  completed_at TEXT,
   records_found INTEGER DEFAULT 0,
   records_imported INTEGER DEFAULT 0,
   status TEXT DEFAULT 'running',
@@ -152,10 +153,10 @@ CREATE TABLE IF NOT EXISTS scrape_logs (
 
 -- Keyword Analysis for detecting childcare-related entries
 CREATE TABLE IF NOT EXISTS keywords (
-  id SERIAL PRIMARY KEY,
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
   keyword TEXT NOT NULL UNIQUE,
   category TEXT,
-  weight DOUBLE PRECISION DEFAULT 1.0
+  weight REAL DEFAULT 1.0
 );
 
 -- Create indexes for common queries
@@ -175,13 +176,12 @@ CREATE INDEX IF NOT EXISTS idx_contracts_contractor ON contracts(contractor_id);
 import { dataSources } from './data-sources.js';
 
 export const postgresDataSources = `
-INSERT INTO data_sources (name, url, type, notes) VALUES
-${dataSources.map(ds => `  ('${ds.name}', '${ds.url}', '${ds.type}', '${ds.notes}')`).join(',\n')}
-ON CONFLICT DO NOTHING;
+INSERT OR IGNORE INTO data_sources (name, url, type, notes) VALUES
+${dataSources.map(ds => `  ('${ds.name}', '${ds.url}', '${ds.type}', '${ds.notes}')`).join(',\n')};
 `;
 
 export const postgresKeywords = `
-INSERT INTO keywords (keyword, category, weight) VALUES
+INSERT OR IGNORE INTO keywords (keyword, category, weight) VALUES
   ('daycare', 'childcare', 2.0),
   ('day care', 'childcare', 2.0),
   ('child care', 'childcare', 2.0),
@@ -209,9 +209,7 @@ INSERT INTO keywords (keyword, category, weight) VALUES
   ('family childcare', 'provider_type', 1.0),
   ('home daycare', 'provider_type', 1.0),
   ('in-home', 'provider_type', 1.0),
-  ('resettlement', 'immigration', 2.0),
-  ('newcomer', 'immigration', 1.5)
-ON CONFLICT DO NOTHING;
+  ('newcomer', 'immigration', 1.5);
 `;
 
 export default {
