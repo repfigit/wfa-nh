@@ -35,8 +35,18 @@ export async function initializeDb(): Promise<void> {
     // Initialize Turso with PostgreSQL schemas
     console.log('Initializing Turso schema...');
     await executeRaw(postgresSchema);
-    await executeRaw(postgresDataSources);
-    await executeRaw(postgresKeywords);
+    
+    // Check if database is already seeded
+    const existingSources = await query('SELECT COUNT(*) as count FROM data_sources');
+    const count = existingSources[0]?.count || 0;
+    
+    if (count === 0) {
+      console.log('Seeding Turso database...');
+      await executeRaw(postgresDataSources);
+      await executeRaw(postgresKeywords);
+    } else {
+      console.log(`Turso database already seeded with ${count} data sources`);
+    }
   } else {
     // Initialize local SQLite schema
     console.log('Initializing SQLite schema...');
