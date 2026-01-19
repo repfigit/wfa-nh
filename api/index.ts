@@ -387,6 +387,68 @@ app.post('/api/admin/init-db', asyncHandler(async (req, res) => {
     
     // Create other missing tables
     const otherTables = [
+      `CREATE TABLE IF NOT EXISTS providers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        dba_name TEXT,
+        address TEXT,
+        city TEXT,
+        state TEXT DEFAULT 'NH',
+        zip TEXT,
+        phone TEXT,
+        email TEXT,
+        website TEXT,
+        license_number TEXT,
+        license_type TEXT,
+        license_status TEXT,
+        capacity INTEGER,
+        age_range TEXT,
+        hours_operation TEXT,
+        provider_type TEXT,
+        is_immigrant_owned INTEGER DEFAULT 0,
+        owner_name TEXT,
+        owner_background TEXT,
+        language_services TEXT,
+        accepts_ccdf INTEGER DEFAULT 0,
+        ccdf_provider_id TEXT,
+        notes TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )`,
+      `CREATE TABLE IF NOT EXISTS payments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        provider_id INTEGER REFERENCES providers(id),
+        fiscal_year INTEGER,
+        fiscal_month INTEGER,
+        amount REAL,
+        children_served INTEGER,
+        payment_type TEXT,
+        funding_source TEXT,
+        program_type TEXT,
+        check_number TEXT,
+        payment_date TEXT,
+        notes TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )`,
+      `CREATE TABLE IF NOT EXISTS fraud_indicators (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        provider_id INTEGER REFERENCES providers(id),
+        contract_id INTEGER REFERENCES contracts(id),
+        contractor_id INTEGER REFERENCES contractors(id),
+        expenditure_id INTEGER REFERENCES expenditures(id),
+        payment_id INTEGER REFERENCES payments(id),
+        indicator_type TEXT NOT NULL,
+        severity TEXT DEFAULT 'medium',
+        description TEXT,
+        evidence TEXT,
+        amount_flagged REAL,
+        status TEXT DEFAULT 'open',
+        reviewed_by TEXT,
+        reviewed_at TEXT,
+        notes TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )`,
       `CREATE TABLE IF NOT EXISTS contractors (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
@@ -446,6 +508,20 @@ app.post('/api/admin/init-db', asyncHandler(async (req, res) => {
         records_imported INTEGER DEFAULT 0,
         status TEXT DEFAULT 'running',
         error_message TEXT
+      )`,
+      `CREATE TABLE IF NOT EXISTS scrape_jobs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        scraper_name TEXT NOT NULL,
+        status TEXT DEFAULT 'pending',
+        progress INTEGER DEFAULT 0,
+        total_steps INTEGER DEFAULT 100,
+        current_step TEXT,
+        records_found INTEGER DEFAULT 0,
+        records_imported INTEGER DEFAULT 0,
+        errors TEXT,
+        started_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        completed_at TEXT,
+        result_summary TEXT
       )`
     ];
     
