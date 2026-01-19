@@ -355,14 +355,26 @@ app.post('/api/admin/create-schema', asyncHandler(async (req, res) => {
 
 // Debug database info
 app.get('/api/admin/db-info', asyncHandler(async (req, res) => {
-  const { IS_TURSO, IS_LOCAL } = await import('../src/db/db-adapter.js');
+  const { IS_TURSO, IS_LOCAL, initDb, query } = await import('../src/db/db-adapter.js');
+  
+  // Initialize DB first
+  await initDb();
+  
   const env = {
     TURSO_DATABASE_URL: process.env.TURSO_DATABASE_URL ? 'SET' : 'NOT SET',
     TURSO_AUTH_TOKEN: process.env.TURSO_AUTH_TOKEN ? 'SET' : 'NOT SET',
     isTurso: IS_TURSO(),
     isLocal: IS_LOCAL(),
     nodeEnv: process.env.NODE_ENV
-  };
+  } as any;
+  
+  // Test basic query
+  try {
+    const testResult = await query('SELECT 1 as test');
+    env.testQuery = testResult;
+  } catch (error) {
+    env.testQueryError = error.message;
+  }
   
   res.json(env);
 }));

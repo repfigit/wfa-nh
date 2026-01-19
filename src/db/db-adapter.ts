@@ -169,23 +169,29 @@ export async function execute(
  */
 export async function executeRaw(sql: string): Promise<void> {
   if (useTurso) {
+    console.log('Executing raw SQL on Turso, SQL length:', sql.length);
     // Split into individual statements and execute
     const statements = sql
       .split(';')
       .map(s => s.trim())
       .filter(s => s.length > 0 && !s.startsWith('--'));
     
-    for (const stmt of statements) {
+    console.log(`Found ${statements.length} statements to execute`);
+    
+    for (let i = 0; i < statements.length; i++) {
+      const stmt = statements[i];
+      console.log(`Executing statement ${i + 1}/${statements.length}: ${stmt.substring(0, 100)}...`);
       try {
         await tursoClient!.execute(stmt);
+        console.log(`Statement ${i + 1} executed successfully`);
       } catch (err: any) {
-        // Ignore "already exists" errors
-        if (!err.message?.includes('already exists')) {
-          console.error('SQL Error:', err.message);
-        }
+        console.error(`SQL Error on statement ${i + 1}:`, err.message);
+        console.error('Statement was:', stmt);
+        // Don't throw, just log - schema creation should be idempotent
       }
     }
   } else {
+    console.log('Executing raw SQL on SQLite');
     const db = await getSqliteDb();
     db.run(sql);
   }
