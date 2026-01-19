@@ -326,6 +326,18 @@ app.get('/api/data-sources', asyncHandler(async (req, res) => {
   res.json(sources);
 }));
 
+// Clean up duplicates (admin endpoint)
+app.post('/api/admin/cleanup-duplicates', asyncHandler(async (req, res) => {
+  await ensureInitialized();
+  await dbHelpers.cleanupDuplicateDataSources();
+  const sources = await dbHelpers.getDataSources();
+  res.json({ 
+    message: 'Duplicates cleaned up', 
+    remaining: sources.length,
+    sources 
+  });
+}));
+
 // Search
 app.get('/api/search', asyncHandler(async (req, res) => {
   await ensureInitialized();

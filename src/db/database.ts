@@ -364,6 +364,38 @@ export const dbHelpers = {
     await initializeDb();
     return query('SELECT * FROM data_sources');
   },
+
+  // Clean up duplicate data sources (one-time migration)
+  cleanupDuplicateDataSources: async (): Promise<void> => {
+    await initializeDb();
+    console.log('Cleaning up duplicate data sources...');
+    
+    if (IS_TURSO()) {
+      // For PostgreSQL, use a more complex query to keep one of each unique combination
+      await execute(`
+        DELETE FROM data_sources 
+        WHERE id NOT IN (
+          SELECT MIN(id) 
+          FROM data_sources 
+          GROUP BY name, url, type, notes
+        )
+      `);
+    } else {
+      // For SQLite
+      const db = await getSqliteDb();
+      db.run(`
+        DELETE FROM data_sources 
+        WHERE id NOT IN (
+          SELECT MIN(id) 
+          FROM data_sources 
+          GROUP BY name, url, type, notes
+        )
+      `);
+      await saveSqliteDb();
+    }
+    
+    console.log('Duplicate cleanup completed');
+  },
 };
 
 export default { 
