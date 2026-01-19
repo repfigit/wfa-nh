@@ -50,6 +50,34 @@ const asyncHandler = (fn: (req: Request, res: Response, next: NextFunction) => P
     Promise.resolve(fn(req, res, next)).catch(next);
   };
 
+// API Key Authentication Middleware
+const requireAuth = (req: Request, res: Response, next: NextFunction) => {
+  const apiKey = req.headers['x-api-key'] as string;
+  const expectedKey = process.env.ADMIN_API_KEY;
+  
+  // If no ADMIN_API_KEY is configured, allow access (for local dev)
+  if (!expectedKey) {
+    console.warn('WARNING: ADMIN_API_KEY not configured - auth is disabled');
+    return next();
+  }
+  
+  if (!apiKey) {
+    return res.status(401).json({ 
+      error: 'Unauthorized', 
+      message: 'Missing x-api-key header' 
+    });
+  }
+  
+  if (apiKey !== expectedKey) {
+    return res.status(401).json({ 
+      error: 'Unauthorized', 
+      message: 'Invalid API key' 
+    });
+  }
+  
+  next();
+};
+
 // Initialize database on cold start
 let initialized = false;
 async function ensureInitialized() {
@@ -162,8 +190,8 @@ app.patch('/api/fraud-indicators/:id', asyncHandler(async (req, res) => {
   res.json(results[0]);
 }));
 
-// CSV Import
-app.post('/api/import/csv', asyncHandler(async (req, res) => {
+// CSV Import (protected)
+app.post('/api/import/csv', requireAuth, asyncHandler(async (req, res) => {
   await ensureInitialized();
   const csvContent = req.body.csv || req.body;
   const filterChildcare = req.query.filter_childcare === 'true';
@@ -214,8 +242,8 @@ app.get('/api/expenditures', asyncHandler(async (req, res) => {
   res.json(results);
 }));
 
-// NH DAS Scraper
-app.post('/api/scraper/search', asyncHandler(async (req, res) => {
+// NH DAS Scraper (protected)
+app.post('/api/scraper/search', requireAuth, asyncHandler(async (req, res) => {
   await ensureInitialized();
   const keyword = req.body.keyword || 'daycare';
   
@@ -229,7 +257,7 @@ app.post('/api/scraper/search', asyncHandler(async (req, res) => {
   }
 }));
 
-app.post('/api/scraper/full', asyncHandler(async (req, res) => {
+app.post('/api/scraper/full', requireAuth, asyncHandler(async (req, res) => {
   await ensureInitialized();
   const result = await scrapeAllChildcareContracts();
   
@@ -246,7 +274,7 @@ app.get('/api/scraper/transparent-nh/years', asyncHandler(async (req, res) => {
   res.json({ years });
 }));
 
-app.post('/api/scraper/transparent-nh', asyncHandler(async (req, res) => {
+app.post('/api/scraper/transparent-nh', requireAuth, asyncHandler(async (req, res) => {
   await ensureInitialized();
   const fiscalYear = req.body.fiscalYear || req.body.fiscal_year;
   
@@ -258,7 +286,7 @@ app.post('/api/scraper/transparent-nh', asyncHandler(async (req, res) => {
   res.json(result);
 }));
 
-app.post('/api/scraper/transparent-nh/recent', asyncHandler(async (req, res) => {
+app.post('/api/scraper/transparent-nh/recent', requireAuth, asyncHandler(async (req, res) => {
   await ensureInitialized();
   const results = await scrapeRecentYears();
   
@@ -275,8 +303,8 @@ app.post('/api/scraper/transparent-nh/recent', asyncHandler(async (req, res) => 
   res.json(summary);
 }));
 
-// Seed sample data for testing (admin endpoint)
-app.post('/api/admin/seed-sample-data', asyncHandler(async (req, res) => {
+// Seed sample data for testing (admin endpoint - protected)
+app.post('/api/admin/seed-sample-data', requireAuth, asyncHandler(async (req, res) => {
   await ensureInitialized();
   
   const results: string[] = [];
@@ -404,7 +432,8 @@ app.get('/api/contracts', asyncHandler(async (req, res) => {
 }));
 
 // Fraud Analysis
-app.post('/api/analyze/fraud', asyncHandler(async (req, res) => {
+// Fraud Analysis (protected - can modify database)
+app.post('/api/analyze/fraud', requireAuth, asyncHandler(async (req, res) => {
   await ensureInitialized();
   const result = await runFullFraudAnalysis();
   res.json({ success: true, ...result });
@@ -452,8 +481,8 @@ app.get('/api/data-sources', asyncHandler(async (req, res) => {
   res.json(sources);
 }));
 
-// Clean up duplicates (admin endpoint)
-app.post('/api/admin/cleanup-duplicates', asyncHandler(async (req, res) => {
+// Clean up duplicates (admin endpoint - protected)
+app.post('/api/admin/cleanup-duplicates', requireAuth, asyncHandler(async (req, res) => {
   await ensureInitialized();
   await dbHelpers.cleanupDuplicateDataSources();
   const sources = await dbHelpers.getDataSources();
@@ -464,8 +493,8 @@ app.post('/api/admin/cleanup-duplicates', asyncHandler(async (req, res) => {
   });
 }));
 
-// Force schema creation and seeding (admin endpoint)
-app.post('/api/admin/init-db', asyncHandler(async (req, res) => {
+// Force schema creation and seeding (admin endpoint - protected)
+app.post('/api/admin/init-db', requireAuth, asyncHandler(async (req, res) => {
   console.log('Manually initializing database...');
   const { createClient } = await import('@libsql/client');
   
@@ -708,8 +737,8 @@ app.post('/api/admin/init-db', asyncHandler(async (req, res) => {
   }
 }));
 
-// Force schema creation (admin endpoint)
-app.post('/api/admin/create-schema', asyncHandler(async (req, res) => {
+// Force schema creation (admin endpoint - protected)
+app.post('/api/admin/create-schema', requireAuth, asyncHandler(async (req, res) => {
   console.log('Manually creating schema...');
   const { executeRaw } = await import('../src/db/db-adapter.js');
   const { postgresSchema } = await import('../src/db/schema-postgres.js');
@@ -723,8 +752,8 @@ app.post('/api/admin/create-schema', asyncHandler(async (req, res) => {
   }
 }));
 
-// Debug database info
-app.get('/api/admin/db-info', asyncHandler(async (req, res) => {
+// Debug database info (protected)
+app.get('/api/admin/db-info', requireAuth, asyncHandler(async (req, res) => {
   const { IS_TURSO, IS_LOCAL, initDb, query } = await import('../src/db/db-adapter.js');
   
   // Initialize DB first
@@ -768,11 +797,11 @@ app.get('/api/admin/db-info', asyncHandler(async (req, res) => {
 }));
 
 // ============================================
-// TRIGGER.DEV JOB ENDPOINTS
+// TRIGGER.DEV JOB ENDPOINTS (protected)
 // ============================================
 
 // Trigger TransparentNH Scraper
-app.post('/api/trigger/transparent-nh', asyncHandler(async (req, res) => {
+app.post('/api/trigger/transparent-nh', requireAuth, asyncHandler(async (req, res) => {
   const fiscalYear = req.body.fiscalYear || req.body.fiscal_year;
   const recentYears = req.body.recentYears || false;
 
@@ -794,7 +823,7 @@ app.post('/api/trigger/transparent-nh', asyncHandler(async (req, res) => {
 }));
 
 // Trigger NH DAS Contracts Scraper
-app.post('/api/trigger/contracts', asyncHandler(async (req, res) => {
+app.post('/api/trigger/contracts', requireAuth, asyncHandler(async (req, res) => {
   const keyword = req.body.keyword;
   const fullScrape = req.body.fullScrape || false;
 
@@ -816,7 +845,7 @@ app.post('/api/trigger/contracts', asyncHandler(async (req, res) => {
 }));
 
 // Trigger NH Licensing Scraper
-app.post('/api/trigger/licensing', asyncHandler(async (req, res) => {
+app.post('/api/trigger/licensing', requireAuth, asyncHandler(async (req, res) => {
   const forceRefresh = req.body.forceRefresh || false;
 
   try {
@@ -836,7 +865,7 @@ app.post('/api/trigger/licensing', asyncHandler(async (req, res) => {
 }));
 
 // Trigger Fraud Analysis
-app.post('/api/trigger/fraud-analysis', asyncHandler(async (req, res) => {
+app.post('/api/trigger/fraud-analysis', requireAuth, asyncHandler(async (req, res) => {
   const analysisType = req.body.analysisType || 'full';
   const structuringThreshold = req.body.structuringThreshold;
   const topVendors = req.body.topVendors;
@@ -860,7 +889,7 @@ app.post('/api/trigger/fraud-analysis', asyncHandler(async (req, res) => {
 }));
 
 // Trigger USAspending.gov Scraper
-app.post('/api/trigger/usaspending', asyncHandler(async (req, res) => {
+app.post('/api/trigger/usaspending', requireAuth, asyncHandler(async (req, res) => {
   const fiscalYear = req.body.fiscalYear || req.body.fiscal_year;
   const includeSummary = req.body.includeSummary !== false;
 
@@ -882,7 +911,7 @@ app.post('/api/trigger/usaspending', asyncHandler(async (req, res) => {
 }));
 
 // Trigger ACF CCDF Data Scraper
-app.post('/api/trigger/acf-ccdf', asyncHandler(async (req, res) => {
+app.post('/api/trigger/acf-ccdf', requireAuth, asyncHandler(async (req, res) => {
   const fiscalYear = req.body.fiscalYear || req.body.fiscal_year;
   const allYears = req.body.allYears || false;
 
@@ -903,8 +932,8 @@ app.post('/api/trigger/acf-ccdf', asyncHandler(async (req, res) => {
   }
 }));
 
-// Direct USAspending.gov endpoint (runs synchronously, for testing)
-app.post('/api/scraper/usaspending', asyncHandler(async (req, res) => {
+// Direct USAspending.gov endpoint (runs synchronously, for testing - protected)
+app.post('/api/scraper/usaspending', requireAuth, asyncHandler(async (req, res) => {
   await ensureInitialized();
   const fiscalYear = req.body.fiscalYear || req.body.fiscal_year;
   
@@ -918,8 +947,8 @@ app.get('/api/scraper/usaspending/overview', asyncHandler(async (req, res) => {
   res.json(overview || { error: 'Could not fetch overview' });
 }));
 
-// Direct ACF CCDF endpoint (runs synchronously, for testing)
-app.post('/api/scraper/acf-ccdf', asyncHandler(async (req, res) => {
+// Direct ACF CCDF endpoint (runs synchronously, for testing - protected)
+app.post('/api/scraper/acf-ccdf', requireAuth, asyncHandler(async (req, res) => {
   await ensureInitialized();
   const fiscalYear = req.body.fiscalYear || req.body.fiscal_year;
   

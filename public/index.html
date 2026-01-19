@@ -313,6 +313,49 @@
     }
     footer a { color: var(--primary); }
     
+    /* API Key Configuration */
+    .api-key-box {
+      background: #f0f9ff;
+      border: 1px solid #3182ce;
+      border-radius: 6px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+    }
+    .api-key-box h4 {
+      font-size: 0.875rem;
+      color: #2c5282;
+      margin-bottom: 0.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .api-key-box p {
+      font-size: 0.8rem;
+      color: var(--text-light);
+      margin-bottom: 0.75rem;
+    }
+    .api-key-input-group {
+      display: flex;
+      gap: 0.5rem;
+    }
+    .api-key-input-group input {
+      flex: 1;
+      padding: 0.5rem;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      font-size: 0.875rem;
+      font-family: 'SF Mono', Monaco, Consolas, monospace;
+    }
+    .api-key-status {
+      font-size: 0.75rem;
+      margin-top: 0.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
+    .api-key-status.configured { color: var(--success); }
+    .api-key-status.not-configured { color: var(--warning); }
+    
     /* Progress Bar Styles */
     .progress-container {
       margin: 1rem 0;
@@ -687,6 +730,26 @@
         <p style="font-size:0.85rem;">Import data from TransparentNH, scrape NH DAS contracts, and run fraud analysis. All data integrates into the common database.</p>
       </div>
       
+      <!-- API Key Configuration -->
+      <div class="api-key-box">
+        <h4>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+          </svg>
+          API Authentication
+        </h4>
+        <p>Admin operations (scrapers, imports, analysis) require an API key. Enter your key below to enable these features.</p>
+        <div class="api-key-input-group">
+          <input type="password" id="api-key-input" placeholder="Enter your API key..." onchange="saveApiKey()">
+          <button class="btn btn-sm" onclick="toggleApiKeyVisibility()">Show</button>
+          <button class="btn btn-sm btn-outline" onclick="clearApiKey()">Clear</button>
+        </div>
+        <div id="api-key-status" class="api-key-status not-configured">
+          No API key configured - admin features may be restricted
+        </div>
+      </div>
+      
       <!-- Active Jobs Panel (shows when scrapers are running) -->
       <div id="active-jobs-panel" class="active-jobs-panel" style="display:none;">
         <h3><span class="spinner"></span> Active Scraper Jobs</h3>
@@ -706,8 +769,9 @@
               <h4>
                 <span class="icon" style="background:#38a169;color:white;">$</span>
                 TransparentNH Expenditures
+                <span style="background:#f6ad55;color:#744210;font-size:0.65rem;padding:2px 6px;border-radius:4px;margin-left:auto;">May be blocked</span>
               </h4>
-              <p>Download official expenditure data from NH state budget transparency portal. Filters for DHHS childcare payments.</p>
+              <p>Download official expenditure data from NH state budget transparency portal. <strong style="color:#c53030;">Note: NH.gov often blocks automated requests.</strong></p>
               <div style="margin-bottom:0.75rem;">
                 <select id="fiscal-year-select" style="width:100%;padding:0.5rem;border:1px solid var(--border);border-radius:4px;font-size:0.875rem;">
                   <option value="">Loading years...</option>
@@ -981,6 +1045,72 @@
   <script>
     const API_BASE = '/api';
     let cityChart, fraudChart;
+    
+    // API Key Management
+    function getApiKey() {
+      return localStorage.getItem('nh-tracker-api-key') || '';
+    }
+    
+    function saveApiKey() {
+      const key = document.getElementById('api-key-input').value;
+      if (key) {
+        localStorage.setItem('nh-tracker-api-key', key);
+        updateApiKeyStatus(true);
+      } else {
+        localStorage.removeItem('nh-tracker-api-key');
+        updateApiKeyStatus(false);
+      }
+    }
+    
+    function clearApiKey() {
+      localStorage.removeItem('nh-tracker-api-key');
+      document.getElementById('api-key-input').value = '';
+      updateApiKeyStatus(false);
+    }
+    
+    function toggleApiKeyVisibility() {
+      const input = document.getElementById('api-key-input');
+      const btn = input.nextElementSibling;
+      if (input.type === 'password') {
+        input.type = 'text';
+        btn.textContent = 'Hide';
+      } else {
+        input.type = 'password';
+        btn.textContent = 'Show';
+      }
+    }
+    
+    function updateApiKeyStatus(isConfigured) {
+      const status = document.getElementById('api-key-status');
+      if (status) {
+        if (isConfigured) {
+          status.className = 'api-key-status configured';
+          status.innerHTML = '<span style="color:var(--success);">&#10003;</span> API key configured';
+        } else {
+          status.className = 'api-key-status not-configured';
+          status.innerHTML = 'No API key configured - admin features may be restricted';
+        }
+      }
+    }
+    
+    function loadApiKeyUI() {
+      const key = getApiKey();
+      const input = document.getElementById('api-key-input');
+      if (input) {
+        input.value = key;
+        updateApiKeyStatus(!!key);
+      }
+    }
+    
+    // Helper to get auth headers for protected endpoints
+    function getAuthHeaders() {
+      const key = getApiKey();
+      const headers = { 'Content-Type': 'application/json' };
+      if (key) {
+        headers['x-api-key'] = key;
+      }
+      return headers;
+    }
     
     // Navigation
     document.querySelectorAll('nav a').forEach(link => {
@@ -1479,7 +1609,7 @@
       try {
         const response = await fetch(`${API_BASE}/scraper/transparent-nh`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuthHeaders(),
           body: JSON.stringify({ fiscalYear: parseInt(fiscalYear) }),
         });
         
@@ -1520,6 +1650,7 @@
       try {
         const response = await fetch(`${API_BASE}/scraper/transparent-nh/recent`, {
           method: 'POST',
+          headers: getAuthHeaders(),
         });
         
         const result = await response.json();
@@ -1571,7 +1702,7 @@
         
         const response = await fetch(`${API_BASE}/import/csv?filter_childcare=${filterChildcare}&create_providers=${createProviders}`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuthHeaders(),
           body: JSON.stringify({ csv: csvContent }),
         });
         
@@ -1616,7 +1747,7 @@
       try {
         const response = await fetch(`${API_BASE}/scraper/search`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuthHeaders(),
           body: JSON.stringify({ keyword }),
         });
         
@@ -1655,6 +1786,7 @@
       try {
         const response = await fetch(`${API_BASE}/scraper/full`, {
           method: 'POST',
+          headers: getAuthHeaders(),
         });
         
         const result = await response.json();
@@ -1686,6 +1818,7 @@
       try {
         const response = await fetch(`${API_BASE}/analyze/fraud`, {
           method: 'POST',
+          headers: getAuthHeaders(),
         });
         
         const result = await response.json();
@@ -2006,6 +2139,24 @@
       
       if (run.status === 'COMPLETED') {
         const output = run.output || {};
+        
+        // Check if blocked by bot protection
+        if (output.blocked) {
+          resultDiv.innerHTML = `
+            <div class="alert-box" style="background:#fed7d7;border-color:#c53030;">
+              <h4 style="color:#c53030;">${formatTaskName(run.taskIdentifier)} - Blocked</h4>
+              <p style="font-size:0.85rem;">NH.gov is blocking automated requests due to bot protection.</p>
+              <p style="font-size:0.85rem;margin-top:0.5rem;"><strong>Alternative data sources:</strong></p>
+              <ul style="margin-left:1.5rem;font-size:0.85rem;">
+                <li><strong>USAspending.gov</strong> - Federal CCDF awards (use the button below)</li>
+                <li><strong>ACF CCDF Statistics</strong> - Official HHS data (use the button below)</li>
+                <li><strong>Manual Upload</strong> - Download CSV from TransparentNH website manually</li>
+              </ul>
+            </div>
+          `;
+          return;
+        }
+        
         resultDiv.innerHTML = `
           <div class="alert-box" style="background:#c6f6d5;border-color:#38a169;">
             <h4 style="color:#276749;">${formatTaskName(run.taskIdentifier)} Complete</h4>
@@ -2013,6 +2164,8 @@
               ${output.totalRecords !== undefined ? `<li>Total records: ${output.totalRecords || 0}</li>` : ''}
               ${output.importedRecords !== undefined ? `<li>Imported: ${output.importedRecords || 0}</li>` : ''}
               ${output.childcareRecords !== undefined ? `<li>Childcare records: ${output.childcareRecords || 0}</li>` : ''}
+              ${output.totalAwards !== undefined ? `<li>Awards found: ${output.totalAwards || 0}</li>` : ''}
+              ${output.totalAmount !== undefined ? `<li>Total amount: $${(output.totalAmount || 0).toLocaleString()}</li>` : ''}
               ${output.contractsFound !== undefined ? `<li>Contracts found: ${output.contractsFound || 0}</li>` : ''}
               ${output.contractsSaved !== undefined ? `<li>Contracts saved: ${output.contractsSaved || 0}</li>` : ''}
               ${output.providersFound !== undefined ? `<li>Providers found: ${output.providersFound || 0}</li>` : ''}
@@ -2023,12 +2176,29 @@
           </div>
         `;
       } else {
-        resultDiv.innerHTML = `
-          <div class="alert-box danger">
-            <h4>${formatTaskName(run.taskIdentifier)} Failed</h4>
-            <p>${run.error?.message || run.error || 'Unknown error'}</p>
-          </div>
-        `;
+        const errorMsg = run.error?.message || run.error || 'Unknown error';
+        const isBlocked = errorMsg.includes('403') || errorMsg.includes('404') || errorMsg.includes('blocking');
+        
+        if (isBlocked && run.taskIdentifier === 'scrape-transparent-nh') {
+          resultDiv.innerHTML = `
+            <div class="alert-box danger">
+              <h4>${formatTaskName(run.taskIdentifier)} - Access Blocked</h4>
+              <p style="font-size:0.85rem;">NH.gov is blocking automated requests. Please use alternative data sources:</p>
+              <ul style="margin-left:1.5rem;font-size:0.85rem;margin-top:0.5rem;">
+                <li><strong>USAspending.gov</strong> - Click "Fetch Awards" button</li>
+                <li><strong>ACF CCDF Statistics</strong> - Click "Fetch Stats" button</li>
+                <li><strong>Manual Upload</strong> - Download from TransparentNH website and upload CSV</li>
+              </ul>
+            </div>
+          `;
+        } else {
+          resultDiv.innerHTML = `
+            <div class="alert-box danger">
+              <h4>${formatTaskName(run.taskIdentifier)} Failed</h4>
+              <p>${errorMsg}</p>
+            </div>
+          `;
+        }
       }
     }
     
@@ -2044,7 +2214,7 @@
       try {
         const response = await fetch(`${API_BASE}/trigger/transparent-nh`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuthHeaders(),
           body: JSON.stringify({ fiscalYear: parseInt(fiscalYear) }),
         });
         
@@ -2077,7 +2247,7 @@
       try {
         const response = await fetch(`${API_BASE}/trigger/transparent-nh`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuthHeaders(),
           body: JSON.stringify({ recentYears: true }),
         });
         
@@ -2112,7 +2282,7 @@
       try {
         const response = await fetch(`${API_BASE}/trigger/contracts`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuthHeaders(),
           body: JSON.stringify({ keyword }),
         });
         
@@ -2145,7 +2315,7 @@
       try {
         const response = await fetch(`${API_BASE}/trigger/contracts`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuthHeaders(),
           body: JSON.stringify({ fullScrape: true }),
         });
         
@@ -2178,7 +2348,7 @@
       try {
         const response = await fetch(`${API_BASE}/trigger/fraud-analysis`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuthHeaders(),
           body: JSON.stringify({ analysisType: 'full' }),
         });
         
@@ -2214,7 +2384,7 @@
       try {
         const response = await fetch(`${API_BASE}/trigger/usaspending`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuthHeaders(),
           body: JSON.stringify({ 
             fiscalYear: fiscalYear ? parseInt(fiscalYear) : undefined,
             includeSummary: true 
@@ -2253,7 +2423,7 @@
       try {
         const response = await fetch(`${API_BASE}/trigger/acf-ccdf`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuthHeaders(),
           body: JSON.stringify({ fiscalYear: parseInt(fiscalYear) }),
         });
         
@@ -2286,7 +2456,7 @@
       try {
         const response = await fetch(`${API_BASE}/trigger/acf-ccdf`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuthHeaders(),
           body: JSON.stringify({ allYears: true }),
         });
         
@@ -2349,6 +2519,7 @@
     
     // Initial load
     loadDashboard();
+    loadApiKeyUI();
   </script>
 </body>
 </html>

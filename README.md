@@ -62,6 +62,33 @@ npm run seed
 npm run dev
 ```
 
+## Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `TURSO_DATABASE_URL` | Yes | Turso (libSQL) database URL |
+| `TURSO_AUTH_TOKEN` | Yes | Authentication token for Turso |
+| `TRIGGER_SECRET_KEY` | Yes | Trigger.dev secret key for background jobs |
+| `BLOB_READ_WRITE_TOKEN` | Optional | Vercel Blob storage token |
+| `AI_GATEWAY_API_KEY` | Optional | AI gateway API key |
+| `ADMIN_API_KEY` | **Recommended** | API key for admin/sensitive endpoints |
+
+### Setting Up ADMIN_API_KEY
+
+The `ADMIN_API_KEY` environment variable protects sensitive API endpoints including:
+- All `/api/admin/*` endpoints (database init, cleanup, seeding)
+- All `/api/trigger/*` endpoints (background job triggers)
+- All `/api/scraper/*` POST endpoints (data scraping)
+- `/api/import/csv` (CSV data import)
+- `/api/analyze/fraud` (fraud analysis)
+
+**To enable authentication:**
+1. Generate a secure random key: `openssl rand -hex 32`
+2. Set the `ADMIN_API_KEY` environment variable in Vercel or your deployment environment
+3. In the frontend, navigate to "Tools" and enter your API key
+
+**Note:** If `ADMIN_API_KEY` is not set, authentication is disabled (allows all requests). This is suitable for local development but not recommended for production.
+
 ## Usage
 
 ### Web Interface
