@@ -16,10 +16,15 @@ This application aggregates data from official New Hampshire state government so
 
 | Source | URL | Description |
 |--------|-----|-------------|
-| NH Procurement Portal | https://apps.das.nh.gov/NHProcurement | State bids and contracts |
-| TransparentNH | https://business.nh.gov/ExpenditureTransparency/ | State expenditure register |
-| Governor & Council Agendas | https://media.sos.nh.gov/govcouncil/ | Contract approval documents |
+| TransparentNH Expenditures | https://business.nh.gov/ExpenditureTransparency/ | State expenditure register |
+| NH Child Care Licensing | https://www.dhhs.nh.gov/programs-services/childcare-parenting-childbirth/child-care-licensing | Child care provider licensing data |
+| NH Connections (NHCIS) | https://www.nh-connections.org/ | Child care information system |
+| Governor and Council Agendas | https://media.sos.nh.gov/govcouncil/ | Contract approval documents |
+| CCDF State Plan 2025-2027 | https://www.dhhs.nh.gov/sites/g/files/ehbemt476/files/documents2/ccdf-state-plan-2025-2027.pdf | Child Care and Development Fund plan |
+| Child Care Scholarship Program | https://www.dhhs.nh.gov/programs-services/childcare-parenting-childbirth/child-development-and-head-start/child-care | Scholarship program details |
 | DHHS Contracts | https://www.dhhs.nh.gov/doing-business-dhhs/contracts-procurement-opportunities | Department-specific contracts |
+
+**Note on Data Collection**: Live web scraping from government websites is currently blocked by anti-bot measures (403 Forbidden errors). The application uses sample/seed data for development and testing. Production data collection requires alternative access methods or API partnerships with state agencies.
 
 ## Known Contractors
 
@@ -83,17 +88,22 @@ Visit http://localhost:3000 to access the dashboard with:
 
 ### Data Collection
 
+**Current Limitations**: Automated web scraping from government websites is blocked by anti-bot protections. The application currently uses seed/sample data for development.
+
 ```bash
-# Run all scrapers
-npm run scrape
+# Database seeding (sample data only)
+npm run seed
 
-# Run specific scrapers
-npm run scrape:gc          # Governor & Council agendas
-npm run scrape:expenditure # Expenditure data
-
-# Run fraud analysis
-npm run analyze
+# Scraping scripts (currently non-functional due to 403 blocks)
+npm run scrape          # All scrapers (blocked)
+npm run scrape:gc       # Governor & Council agendas (blocked)  
+npm run scrape:expenditure # Expenditure data (blocked)
 ```
+
+For production data collection, alternative methods are needed:
+- Direct API access to state systems
+- Manual data entry from public records
+- Partnership with state agencies for data feeds
 
 ## Project Structure
 

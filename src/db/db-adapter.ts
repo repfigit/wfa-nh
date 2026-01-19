@@ -1,6 +1,6 @@
 /**
  * Database Adapter
- * Uses Turso (libSQL) in production and SQLite locally
+ * Uses Turso (libSQL) by default if available, falls back to SQLite locally
  * Since Turso is SQLite-compatible, we use the same SQL syntax everywhere
  */
 
@@ -13,9 +13,12 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DB_PATH = path.join(__dirname, '../../data/childcare.db');
 
-// Detect environment - use Turso if URL is set
-export const IS_TURSO = !!process.env.TURSO_DATABASE_URL;
-export const IS_LOCAL = !IS_TURSO;
+// Detect environment - prefer Turso if URL is set, fallback to SQLite
+let useTurso = false;
+
+// For backward compatibility
+export const IS_TURSO = () => useTurso;
+export const IS_LOCAL = () => !useTurso;
 
 // Database instances
 let tursoClient: Client | null = null;
@@ -26,31 +29,42 @@ let SQL: any = null;
  * Initialize the database connection
  */
 export async function initDb(): Promise<void> {
-  if (IS_TURSO) {
-    console.log('Using Turso (production)');
-    if (!tursoClient) {
-      tursoClient = createClient({
-        url: process.env.TURSO_DATABASE_URL!,
-        authToken: process.env.TURSO_AUTH_TOKEN,
-      });
+  // Try Turso first if URL is set
+  if (process.env.TURSO_DATABASE_URL) {
+    try {
+      console.log('Attempting to use Turso...');
+      if (!tursoClient) {
+        tursoClient = createClient({
+          url: process.env.TURSO_DATABASE_URL!,
+          authToken: process.env.TURSO_AUTH_TOKEN,
+        });
+      }
+      // Test the connection with a simple query
+      await tursoClient.execute('SELECT 1');
+      useTurso = true;
+      console.log('Using Turso successfully');
+      return;
+    } catch (error) {
+      console.warn('Turso connection failed, falling back to SQLite:', error);
     }
-  } else {
-    console.log('Using SQLite (local)');
-    if (!SQL) {
-      SQL = await initSqlJs();
-    }
-    
-    if (!sqliteDb) {
-      try {
-        if (fs.existsSync(DB_PATH)) {
-          const fileBuffer = fs.readFileSync(DB_PATH);
-          sqliteDb = new SQL.Database(fileBuffer);
-        } else {
-          sqliteDb = new SQL.Database();
-        }
-      } catch (err) {
+  }
+  
+  // Fallback to SQLite
+  console.log('Using SQLite');
+  if (!SQL) {
+    SQL = await initSqlJs();
+  }
+  
+  if (!sqliteDb) {
+    try {
+      if (fs.existsSync(DB_PATH)) {
+        const fileBuffer = fs.readFileSync(DB_PATH);
+        sqliteDb = new SQL.Database(fileBuffer);
+      } else {
         sqliteDb = new SQL.Database();
       }
+    } catch (err) {
+      sqliteDb = new SQL.Database();
     }
   }
 }
@@ -69,7 +83,7 @@ export async function getSqliteDb(): Promise<SqlJsDatabase> {
  * Save SQLite database to file (local only)
  */
 export async function saveSqliteDb(): Promise<void> {
-  if (IS_TURSO || !sqliteDb) return;
+  if (useTurso || !sqliteDb) return;
   
   const data = sqliteDb.export();
   const buffer = Buffer.from(data);
@@ -100,7 +114,7 @@ export async function query<T = any>(
   sql: string,
   params: any[] = []
 ): Promise<T[]> {
-  if (IS_TURSO) {
+  if (useTurso) {
     const result = await tursoClient!.execute({
       sql,
       args: params,
@@ -129,7 +143,7 @@ export async function execute(
   sql: string,
   params: any[] = []
 ): Promise<{ lastId?: number; changes?: number }> {
-  if (IS_TURSO) {
+  if (useTurso) {
     const result = await tursoClient!.execute({
       sql,
       args: params,
@@ -154,7 +168,7 @@ export async function execute(
  * Handles multiple statements separated by semicolons
  */
 export async function executeRaw(sql: string): Promise<void> {
-  if (IS_TURSO) {
+  if (useTurso) {
     // Split into individual statements and execute
     const statements = sql
       .split(';')
@@ -183,7 +197,7 @@ export async function executeRaw(sql: string): Promise<void> {
 export async function executeBatch(
   statements: { sql: string; args?: any[] }[]
 ): Promise<void> {
-  if (IS_TURSO) {
+  if (useTurso) {
     await tursoClient!.batch(
       statements.map(s => ({
         sql: s.sql,

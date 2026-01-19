@@ -1,5 +1,7 @@
 // Database schema for NH Childcare/Daycare Payments Tracker
 
+import { dataSources } from './data-sources.js';
+
 export const schema = `
 -- Childcare Providers (Daycares)
 CREATE TABLE IF NOT EXISTS providers (
@@ -167,7 +169,7 @@ CREATE INDEX IF NOT EXISTS idx_fraud_type ON fraud_indicators(indicator_type);
 -- Data Sources
 CREATE TABLE IF NOT EXISTS data_sources (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT NOT NULL,
+  name TEXT NOT NULL UNIQUE,
   url TEXT NOT NULL,
   type TEXT NOT NULL,
   last_scraped TEXT,
@@ -209,7 +211,9 @@ CREATE TABLE IF NOT EXISTS keywords (
   category TEXT,
   weight REAL DEFAULT 1.0
 );
+`;
 
+export const seedData = `
 -- Insert keywords for childcare fraud detection
 INSERT OR IGNORE INTO keywords (keyword, category, weight) VALUES
   ('refugee', 'immigration', 2.0),
@@ -237,12 +241,5 @@ INSERT OR IGNORE INTO keywords (keyword, category, weight) VALUES
   ('newcomer', 'immigration', 1.5);
 
 -- Insert data sources for childcare tracking
-INSERT OR IGNORE INTO data_sources (name, url, type, notes) VALUES
-  ('TransparentNH Expenditures', 'https://business.nh.gov/ExpenditureTransparency/', 'expenditure', 'State expenditure register - search for childcare/daycare payments'),
-  ('NH Child Care Licensing', 'https://www.dhhs.nh.gov/programs-services/childcare-parenting-childbirth/child-care-licensing', 'licensing', 'Licensed childcare provider database'),
-  ('NH Connections (NHCIS)', 'https://www.nh-connections.org/', 'provider_database', 'Child care resource and referral system'),
-  ('Governor and Council Agendas', 'https://media.sos.nh.gov/govcouncil/', 'contracts', 'Contract approvals for childcare programs'),
-  ('CCDF State Plan 2025-2027', 'https://www.dhhs.nh.gov/sites/g/files/ehbemt476/files/documents2/ccdf-state-plan-2025-2027.pdf', 'policy', 'Child Care and Development Fund state plan - $30M annually'),
-  ('Child Care Scholarship Program', 'https://www.dhhs.nh.gov/programs-services/childcare-parenting-childbirth/child-development-and-head-start/child-care', 'program', 'CCDF scholarship provider enrollment and billing'),
-  ('DHHS Contracts', 'https://www.dhhs.nh.gov/doing-business-dhhs/contracts-procurement-opportunities', 'contracts', 'DHHS contracts and RFPs');
+${dataSources.map(ds => `INSERT OR IGNORE INTO data_sources (name, url, type, notes) VALUES ('${ds.name}', '${ds.url}', '${ds.type}', '${ds.notes}');`).join('\n')}
 `;

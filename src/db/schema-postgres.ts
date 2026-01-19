@@ -130,7 +130,7 @@ CREATE TABLE IF NOT EXISTS fraud_indicators (
 -- Data Sources Reference
 CREATE TABLE IF NOT EXISTS data_sources (
   id SERIAL PRIMARY KEY,
-  name TEXT NOT NULL,
+  name TEXT NOT NULL UNIQUE,
   url TEXT,
   type TEXT,
   last_scraped TIMESTAMP,
@@ -172,15 +172,11 @@ CREATE INDEX IF NOT EXISTS idx_fraud_status ON fraud_indicators(status);
 CREATE INDEX IF NOT EXISTS idx_contracts_contractor ON contracts(contractor_id);
 `;
 
+import { dataSources } from './data-sources.js';
+
 export const postgresDataSources = `
 INSERT INTO data_sources (name, url, type, notes) VALUES
-  ('TransparentNH Expenditures', 'https://business.nh.gov/ExpenditureTransparency/', 'expenditure', 'State expenditure register - search for childcare/daycare payments'),
-  ('NH Child Care Licensing', 'https://www.dhhs.nh.gov/programs-services/childcare-parenting-childbirth/child-care-licensing', 'licensing', 'Licensed childcare provider database'),
-  ('NH Connections (NHCIS)', 'https://www.nh-connections.org/', 'provider_database', 'Child care resource and referral system'),
-  ('Governor and Council Agendas', 'https://media.sos.nh.gov/govcouncil/', 'contracts', 'Contract approvals for childcare programs'),
-  ('CCDF State Plan 2025-2027', 'https://www.dhhs.nh.gov/sites/g/files/ehbemt476/files/documents2/ccdf-state-plan-2025-2027.pdf', 'policy', 'Child Care and Development Fund state plan - $30M annually'),
-  ('Child Care Scholarship Program', 'https://www.dhhs.nh.gov/programs-services/childcare-parenting-childbirth/child-development-and-head-start/child-care', 'program', 'CCDF scholarship provider enrollment and billing'),
-  ('DHHS Contracts', 'https://www.dhhs.nh.gov/doing-business-dhhs/contracts-procurement-opportunities', 'contracts', 'DHHS contracts and RFPs')
+${dataSources.map(ds => `  ('${ds.name}', '${ds.url}', '${ds.type}', '${ds.notes}')`).join(',\n')}
 ON CONFLICT DO NOTHING;
 `;
 

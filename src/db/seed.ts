@@ -348,7 +348,7 @@ export async function seedDatabase(skipInit = false) {
   console.log(`  - Created ${fraudCount} fraud indicators`);
 
   // Save database (SQLite only)
-  if (IS_LOCAL) {
+  if (IS_LOCAL()) {
     await saveSqliteDb();
   }
   

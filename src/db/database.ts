@@ -14,12 +14,14 @@ import {
   execute,
   executeRaw,
 } from './db-adapter.js';
-import { schema } from './schema.js';
+import { schema, seedData } from './schema.js';
+import { postgresSchema, postgresDataSources, postgresKeywords } from './schema-postgres.js';
 
 // Re-export for backward compatibility
 export { IS_TURSO, IS_LOCAL };
 
 let initialized = false;
+let seeded = false;
 
 /**
  * Initialize the database with schema
@@ -29,15 +31,30 @@ export async function initializeDb(): Promise<void> {
   
   await initDb();
   
-  if (IS_TURSO) {
-    // Initialize Turso with SQLite schema
+  if (IS_TURSO()) {
+    // Initialize Turso with PostgreSQL schemas
     console.log('Initializing Turso schema...');
-    await executeRaw(schema);
+    await executeRaw(postgresSchema);
+    await executeRaw(postgresDataSources);
+    await executeRaw(postgresKeywords);
   } else {
     // Initialize local SQLite schema
     console.log('Initializing SQLite schema...');
     const db = await getSqliteDb();
     db.run(schema);
+    
+    // Check if database is already seeded
+    const existingSources = db.exec('SELECT COUNT(*) as count FROM data_sources');
+    const count = existingSources[0]?.values[0]?.[0] || 0;
+    
+    if (count === 0) {
+      console.log('Seeding database...');
+      db.run(seedData);
+      seeded = true;
+    } else {
+      console.log(`Database already seeded with ${count} data sources`);
+    }
+    
     await saveSqliteDb();
   }
   
@@ -50,7 +67,7 @@ export async function initializeDb(): Promise<void> {
  * Note: Prefer using query() and execute() from db-adapter
  */
 export async function getDb() {
-  if (IS_TURSO) {
+  if (IS_TURSO()) {
     // Return a wrapper that mimics sql.js interface for PostgreSQL
     return {
       run: async (sqlQuery: string, params: any[] = []) => {
@@ -90,7 +107,7 @@ export async function getDb() {
  * Save database (SQLite only)
  */
 export async function saveDb(): Promise<void> {
-  if (IS_LOCAL) {
+  if (IS_LOCAL()) {
     await saveSqliteDb();
   }
 }

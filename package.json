@@ -20,6 +20,7 @@
     "@libsql/client": "^0.17.0",
     "cheerio": "^1.0.0",
     "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
     "express": "^4.21.2",
     "jszip": "^3.10.1",
     "node-fetch": "^3.3.2",

@@ -1,5 +1,8 @@
 import { startServer } from './api/server.js';
 
+import dotenv from 'dotenv';
+dotenv.config({ path: '.env.local' });
+
 console.log(`
 ╔════════════════════════════════════════════════════════════════╗
 ║     NH Immigrant Contracts Tracker                             ║
