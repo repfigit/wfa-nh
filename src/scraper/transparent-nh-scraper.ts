@@ -643,11 +643,20 @@ export function getAvailableFiscalYears(): number[] {
   return Object.keys(FISCAL_YEAR_URLS).map(Number).sort((a, b) => b - a);
 }
 
+// Export for use by upload endpoint
+export { extractZip, parseCSV, saveRecords, isChildcareRelated, isDHHS, FISCAL_YEAR_URLS };
+
 export default {
   scrapeFiscalYear,
   scrapeMultipleYears,
   scrapeRecentYears,
   getAvailableFiscalYears,
+  extractZip,
+  parseCSV,
+  saveRecords,
+  isChildcareRelated,
+  isDHHS,
   CHILDCARE_KEYWORDS,
   IMMIGRANT_KEYWORDS,
+  FISCAL_YEAR_URLS,
 };

@@ -1025,6 +1025,80 @@ app.get('/api/trigger/runs', asyncHandler(async (req, res) => {
 }))
 
 // ============================================
+// INGESTION STATUS ENDPOINTS
+// ============================================
+
+// Get ingestion run history from database
+app.get('/api/ingestion/runs', asyncHandler(async (req, res) => {
+  await ensureInitialized();
+  const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+  const source = req.query.source as string | undefined;
+
+  try {
+    const sourceClause = source ? 'WHERE source = ?' : '';
+    const params = source ? [source, limit] : [limit];
+
+    const ingestionRuns = await query(`
+      SELECT id, source, status, started_at, completed_at,
+             records_processed, records_imported, details, error_message
+      FROM ingestion_runs
+      ${sourceClause}
+      ORDER BY started_at DESC
+      LIMIT ?
+    `, params);
+
+    // Get summary by source
+    const summary = await query(`
+      SELECT source,
+             COUNT(*) as total_runs,
+             SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as successful_runs,
+             SUM(records_imported) as total_imported,
+             MAX(completed_at) as last_run
+      FROM ingestion_runs
+      GROUP BY source
+      ORDER BY last_run DESC
+    `);
+
+    res.json({
+      success: true,
+      runs: ingestionRuns,
+      summary,
+      totalRuns: ingestionRuns.length
+    });
+  } catch (error: any) {
+    console.error('Failed to get ingestion runs:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+}));
+
+// Get scheduled task overview
+app.get('/api/ingestion/schedule', asyncHandler(async (req, res) => {
+  const scheduleOverview = {
+    tasks: [
+      { id: 'daily-usaspending-ingest', source: 'USAspending.gov', schedule: 'Daily 6 AM UTC', description: 'Federal CCDF awards' },
+      { id: 'weekly-acf-ccdf-ingest', source: 'ACF CCDF', schedule: 'Monday 4 AM UTC', description: 'HHS expenditure statistics' },
+      { id: 'weekly-propublica-990-ingest', source: 'ProPublica 990', schedule: 'Tuesday 4 AM UTC', description: 'Nonprofit IRS filings' },
+      { id: 'weekly-census-saipe-ingest', source: 'Census SAIPE', schedule: 'Wednesday 4 AM UTC', description: 'County poverty data' },
+      { id: 'weekly-datagov-ccdf-ingest', source: 'Data.gov CCDF', schedule: 'Thursday 4 AM UTC', description: 'CCDF administrative data' },
+      { id: 'weekly-fraud-analysis', source: 'Fraud Analysis', schedule: 'Monday 8 AM UTC', description: 'Pattern detection' },
+      { id: 'weekly-full-refresh', source: 'Full Refresh', schedule: 'Sunday 2 AM UTC', description: 'Complete data sync' },
+      { id: 'monthly-data-quality-check', source: 'Data Quality', schedule: '1st of month 3 AM UTC', description: 'Integrity validation' },
+    ],
+    dataSources: [
+      { name: 'USAspending.gov', type: 'API', status: 'active', dataType: 'Federal CCDF awards' },
+      { name: 'ACF.hhs.gov', type: 'API/Fallback', status: 'active', dataType: 'HHS statistics' },
+      { name: 'ProPublica Nonprofit Explorer', type: 'API', status: 'active', dataType: 'IRS 990 filings' },
+      { name: 'Census SAIPE', type: 'API', status: 'active', dataType: 'Poverty/income data' },
+      { name: 'Data.gov CCDF', type: 'Bulk/Fallback', status: 'active', dataType: 'CCDF admin data' },
+      { name: 'TransparentNH', type: 'Web Scraper', status: 'blocked', dataType: 'State expenditures' },
+      { name: 'NH DAS Contracts', type: 'Web Scraper', status: 'blocked', dataType: 'State contracts' },
+    ]
+  };
+
+  res.json({ success: true, ...scheduleOverview });
+}));
+
+// ============================================
 // FEDERAL DATA ENDPOINTS (Public - real data!)
 // ============================================
 

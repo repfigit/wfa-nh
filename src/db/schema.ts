@@ -211,6 +211,24 @@ CREATE TABLE IF NOT EXISTS keywords (
   category TEXT,
   weight REAL DEFAULT 1.0
 );
+
+-- Ingestion run tracking for scheduled data collection
+CREATE TABLE IF NOT EXISTS ingestion_runs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('started', 'completed', 'failed')),
+  started_at TEXT NOT NULL,
+  completed_at TEXT,
+  records_processed INTEGER DEFAULT 0,
+  records_imported INTEGER DEFAULT 0,
+  details TEXT,
+  error_message TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_ingestion_source ON ingestion_runs(source);
+CREATE INDEX IF NOT EXISTS idx_ingestion_status ON ingestion_runs(status);
+CREATE INDEX IF NOT EXISTS idx_ingestion_started ON ingestion_runs(started_at);
 `;
 
 export const seedData = `
