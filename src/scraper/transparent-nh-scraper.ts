@@ -15,7 +15,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DATA_DIR = path.join(__dirname, '../../data/downloads');
+// Use /tmp on Vercel (read-only filesystem), local data dir otherwise
+const DATA_DIR = process.env.VERCEL ? '/tmp/downloads' : path.join(__dirname, '../../data/downloads');
 
 // TransparentNH fiscal year download URLs
 const FISCAL_YEAR_URLS: Record<number, string> = {
