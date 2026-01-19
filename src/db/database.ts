@@ -34,7 +34,13 @@ export async function initializeDb(): Promise<void> {
   if (IS_TURSO()) {
     // Initialize Turso with PostgreSQL schemas
     console.log('Initializing Turso schema...');
-    await executeRaw(postgresSchema);
+    try {
+      await executeRaw(postgresSchema);
+      console.log('Turso schema executed successfully');
+    } catch (error) {
+      console.error('Error executing Turso schema:', error);
+      throw error;
+    }
     
     // Check if database is already seeded
     const existingSources = await query('SELECT COUNT(*) as count FROM data_sources');

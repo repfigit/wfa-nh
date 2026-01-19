@@ -338,6 +338,35 @@ app.post('/api/admin/cleanup-duplicates', asyncHandler(async (req, res) => {
   });
 }));
 
+// Force schema creation (admin endpoint)
+app.post('/api/admin/create-schema', asyncHandler(async (req, res) => {
+  console.log('Manually creating schema...');
+  const { executeRaw } = await import('../src/db/db-adapter.js');
+  const { postgresSchema } = await import('../src/db/schema-postgres.js');
+  
+  try {
+    await executeRaw(postgresSchema);
+    res.json({ message: 'Schema created successfully' });
+  } catch (error) {
+    console.error('Schema creation error:', error);
+    res.status(500).json({ error: error.message });
+  }
+}));
+
+// Debug database info
+app.get('/api/admin/db-info', asyncHandler(async (req, res) => {
+  const { IS_TURSO, IS_LOCAL } = await import('../src/db/db-adapter.js');
+  const env = {
+    TURSO_DATABASE_URL: process.env.TURSO_DATABASE_URL ? 'SET' : 'NOT SET',
+    TURSO_AUTH_TOKEN: process.env.TURSO_AUTH_TOKEN ? 'SET' : 'NOT SET',
+    isTurso: IS_TURSO(),
+    isLocal: IS_LOCAL(),
+    nodeEnv: process.env.NODE_ENV
+  };
+  
+  res.json(env);
+}));
+
 // Search
 app.get('/api/search', asyncHandler(async (req, res) => {
   await ensureInitialized();
