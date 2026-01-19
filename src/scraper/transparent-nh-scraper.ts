@@ -8,9 +8,7 @@
 
 import { initializeDb, saveDb } from '../db/database.js';
 import { query, execute } from '../db/db-adapter.js';
-import { createWriteStream, existsSync, mkdirSync, readFileSync, unlinkSync } from 'fs';
-import { pipeline } from 'stream/promises';
-import { createGunzip } from 'zlib';
+import { existsSync, mkdirSync, writeFileSync, readFileSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 

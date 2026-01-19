@@ -261,6 +261,118 @@ app.post('/api/scraper/transparent-nh/recent', asyncHandler(async (req, res) => 
   res.json(summary);
 }));
 
+// Seed sample data for testing (admin endpoint)
+app.post('/api/admin/seed-sample-data', asyncHandler(async (req, res) => {
+  await ensureInitialized();
+  
+  const results: string[] = [];
+  
+  // Sample NH childcare providers
+  const sampleProviders = [
+    { name: 'Little Stars Daycare', city: 'Manchester', capacity: 45, accepts_ccdf: 1, is_immigrant_owned: 0, provider_type: 'Center' },
+    { name: 'Sunshine Learning Center', city: 'Nashua', capacity: 60, accepts_ccdf: 1, is_immigrant_owned: 0, provider_type: 'Center' },
+    { name: 'ABC Family Childcare', city: 'Concord', capacity: 12, accepts_ccdf: 1, is_immigrant_owned: 0, provider_type: 'Family' },
+    { name: 'Happy Kids Preschool', city: 'Dover', capacity: 35, accepts_ccdf: 1, is_immigrant_owned: 0, provider_type: 'Center' },
+    { name: 'Rainbow Child Development', city: 'Manchester', capacity: 80, accepts_ccdf: 1, is_immigrant_owned: 1, provider_type: 'Center' },
+    { name: 'Tiny Tots Academy', city: 'Portsmouth', capacity: 50, accepts_ccdf: 1, is_immigrant_owned: 0, provider_type: 'Center' },
+    { name: 'First Steps Daycare', city: 'Keene', capacity: 30, accepts_ccdf: 1, is_immigrant_owned: 0, provider_type: 'Center' },
+    { name: 'Growing Minds LLC', city: 'Derry', capacity: 40, accepts_ccdf: 1, is_immigrant_owned: 1, provider_type: 'Center' },
+    { name: 'Bright Futures Childcare', city: 'Rochester', capacity: 25, accepts_ccdf: 1, is_immigrant_owned: 0, provider_type: 'Center' },
+    { name: 'Little Explorers', city: 'Salem', capacity: 55, accepts_ccdf: 1, is_immigrant_owned: 0, provider_type: 'Center' },
+  ];
+  
+  for (const provider of sampleProviders) {
+    try {
+      await execute(`
+        INSERT OR IGNORE INTO providers (name, city, state, capacity, accepts_ccdf, is_immigrant_owned, provider_type, notes)
+        VALUES (?, ?, 'NH', ?, ?, ?, ?, 'Sample data for testing')
+      `, [provider.name, provider.city, provider.capacity, provider.accepts_ccdf, provider.is_immigrant_owned, provider.provider_type]);
+    } catch (e) {
+      // Ignore duplicates
+    }
+  }
+  results.push(`Added ${sampleProviders.length} sample providers`);
+  
+  // Get provider IDs
+  const providers = await query('SELECT id, name, capacity FROM providers');
+  
+  // Sample payments/expenditures (CCDF scholarship payments)
+  const fiscalYears = [2024, 2025];
+  let paymentCount = 0;
+  
+  for (const provider of providers) {
+    for (const fy of fiscalYears) {
+      // Generate monthly payments with some variation
+      for (let month = 1; month <= 12; month++) {
+        const baseAmount = (provider.capacity as number) * 800; // ~$800 per child per month
+        const variance = (Math.random() - 0.5) * baseAmount * 0.3; // +/- 15% variance
+        const amount = Math.round(baseAmount + variance);
+        
+        try {
+          await execute(`
+            INSERT INTO payments (provider_id, fiscal_year, fiscal_month, amount, payment_type, funding_source)
+            VALUES (?, ?, ?, ?, 'CCDF Scholarship', 'Federal CCDF')
+          `, [provider.id, fy, month, amount]);
+          paymentCount++;
+        } catch (e) {
+          // Ignore errors
+        }
+        
+        // Also add to expenditures for cross-referencing
+        try {
+          await execute(`
+            INSERT INTO expenditures (provider_id, fiscal_year, department, vendor_name, amount, description, source_url)
+            VALUES (?, ?, 'Health and Human Services', ?, ?, 'CCDF Scholarship Payment', 'Sample Data')
+          `, [provider.id, fy, provider.name, amount]);
+        } catch (e) {
+          // Ignore errors
+        }
+      }
+    }
+  }
+  results.push(`Added ${paymentCount} sample payments`);
+  
+  // Add some fraud indicators for testing
+  const fraudIndicators = [
+    { provider_name: 'Rainbow Child Development', indicator_type: 'high_growth', severity: 'medium', description: 'Payment amounts increased 150% in 6 months' },
+    { provider_name: 'Growing Minds LLC', indicator_type: 'over_capacity', severity: 'high', description: 'Billing for 52 children but licensed for 40' },
+    { provider_name: 'Little Stars Daycare', indicator_type: 'duplicate_payment', severity: 'low', description: 'Potential duplicate payment detected for March 2025' },
+  ];
+  
+  for (const indicator of fraudIndicators) {
+    const providerRows = await query('SELECT id FROM providers WHERE name = ?', [indicator.provider_name]);
+    if (providerRows.length > 0) {
+      try {
+        await execute(`
+          INSERT INTO fraud_indicators (provider_id, indicator_type, severity, description, status)
+          VALUES (?, ?, ?, ?, 'open')
+        `, [providerRows[0].id, indicator.indicator_type, indicator.severity, indicator.description]);
+      } catch (e) {
+        // Ignore errors
+      }
+    }
+  }
+  results.push(`Added ${fraudIndicators.length} sample fraud indicators`);
+  
+  // Get final counts
+  const providerCount = await query('SELECT COUNT(*) as count FROM providers');
+  const paymentCountFinal = await query('SELECT COUNT(*) as count FROM payments');
+  const expenditureCount = await query('SELECT COUNT(*) as count FROM expenditures');
+  const fraudCount = await query('SELECT COUNT(*) as count FROM fraud_indicators');
+  
+  res.json({
+    success: true,
+    message: 'Sample data seeded successfully',
+    results,
+    counts: {
+      providers: providerCount[0]?.count,
+      payments: paymentCountFinal[0]?.count,
+      expenditures: expenditureCount[0]?.count,
+      fraud_indicators: fraudCount[0]?.count,
+    }
+  });
+}));
+
 // Get scraped contracts
 app.get('/api/contracts', asyncHandler(async (req, res) => {
   await ensureInitialized();
@@ -607,6 +719,8 @@ app.get('/api/admin/db-info', asyncHandler(async (req, res) => {
   const env: any = {
     TURSO_DATABASE_URL: process.env.TURSO_DATABASE_URL ? 'SET' : 'NOT SET',
     TURSO_AUTH_TOKEN: process.env.TURSO_AUTH_TOKEN ? 'SET' : 'NOT SET',
+    BLOB_READ_WRITE_TOKEN: process.env.BLOB_READ_WRITE_TOKEN ? 'SET' : 'NOT SET',
+    AI_GATEWAY_API_KEY: process.env.AI_GATEWAY_API_KEY ? 'SET' : 'NOT SET',
     isTurso: IS_TURSO(),
     isLocal: IS_LOCAL(),
     nodeEnv: process.env.NODE_ENV
