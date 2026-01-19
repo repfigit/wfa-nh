@@ -542,6 +542,17 @@
         <p style="font-size:0.85rem;">The Trump administration froze CCDF funding in several states (notably Minnesota) due to daycare fraud allegations, particularly involving immigrant-owned daycares. NH receives ~$30M annually in CCDF funds. This tool tracks payments for potential fraud patterns.</p>
       </div>
       
+      <!-- Federal Funding Summary Card -->
+      <div class="card" id="federal-funding-card" style="margin-bottom: 1.5rem; border-left: 4px solid #2c5282;">
+        <div class="card-header">
+          <h2>Federal CCDF Funding (USAspending.gov)</h2>
+          <button class="btn btn-sm btn-outline" onclick="refreshFederalData()" id="refresh-federal-btn">Refresh Data</button>
+        </div>
+        <div class="card-body" id="federal-funding-content">
+          <div class="loading">Loading federal funding data...</div>
+        </div>
+      </div>
+      
       <div class="stats-grid" id="stats-grid">
         <div class="loading">Loading statistics...</div>
       </div>
@@ -1182,15 +1193,125 @@
       return `<span style="color:var(--success)">${children}/${capacity}</span>`;
     }
     
+    // Federal Funding Display
+    function renderFederalFunding(data) {
+      const container = document.getElementById('federal-funding-content');
+      
+      if (!data || (!data.hasCachedData && !data.liveData)) {
+        container.innerHTML = `
+          <div style="text-align: center; padding: 1rem;">
+            <p style="color: var(--text-light); margin-bottom: 1rem;">No federal funding data loaded yet.</p>
+            <button class="btn" onclick="refreshFederalData()">Load Federal CCDF Data</button>
+            <p style="font-size: 0.75rem; color: var(--text-light); margin-top: 0.5rem;">
+              Data sourced from USAspending.gov (CFDA 93.575 & 93.596)
+            </p>
+          </div>
+        `;
+        return;
+      }
+      
+      const fyBreakdown = (data.byFiscalYear || []).slice(0, 5).map(fy => `
+        <div style="display: flex; justify-content: space-between; padding: 0.5rem 0; border-bottom: 1px solid var(--border);">
+          <span>FY ${fy.fiscal_year}</span>
+          <span class="amount" style="font-weight: 600;">${formatCurrency(fy.total_amount)}</span>
+          <span style="color: var(--text-light); font-size: 0.8rem;">${fy.award_count} awards</span>
+        </div>
+      `).join('');
+      
+      container.innerHTML = `
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem;">
+          <div>
+            <div style="font-size: 0.7rem; text-transform: uppercase; color: var(--text-light); margin-bottom: 0.25rem;">Total Federal CCDF Funding</div>
+            <div style="font-size: 2rem; font-weight: 700; color: #2c5282;">${formatCurrency(data.totalFederalAmount)}</div>
+            <div style="font-size: 0.8rem; color: var(--text-light);">${data.totalAwards} awards tracked</div>
+          </div>
+          <div>
+            <div style="font-size: 0.7rem; text-transform: uppercase; color: var(--text-light); margin-bottom: 0.25rem;">Most Recent FY</div>
+            <div style="font-size: 2rem; font-weight: 700; color: var(--primary);">${data.recentFiscalYear ? 'FY ' + data.recentFiscalYear : 'N/A'}</div>
+            <div style="font-size: 0.8rem; color: var(--text-light);">${formatCurrency(data.recentYearAmount)}</div>
+          </div>
+          <div>
+            <div style="font-size: 0.7rem; text-transform: uppercase; color: var(--text-light); margin-bottom: 0.25rem;">CCDF Programs Tracked</div>
+            <div style="font-size: 0.85rem; margin-top: 0.5rem;">
+              <div><strong>93.575</strong> - Block Grant</div>
+              <div><strong>93.596</strong> - Mandatory/Matching</div>
+            </div>
+          </div>
+        </div>
+        ${fyBreakdown ? `
+          <div style="margin-top: 1.5rem;">
+            <div style="font-size: 0.8rem; font-weight: 600; margin-bottom: 0.5rem;">Awards by Fiscal Year</div>
+            ${fyBreakdown}
+          </div>
+        ` : ''}
+        <div style="margin-top: 1rem; font-size: 0.75rem; color: var(--text-light);">
+          ${data.hasCachedData ? 'Data cached from ' : ''}USAspending.gov | Last updated: ${new Date(data.lastUpdated).toLocaleString()}
+        </div>
+      `;
+    }
+    
+    async function refreshFederalData() {
+      const btn = document.getElementById('refresh-federal-btn');
+      const container = document.getElementById('federal-funding-content');
+      
+      btn.disabled = true;
+      btn.textContent = 'Loading...';
+      container.innerHTML = '<div class="loading">Fetching federal funding data from USAspending.gov...</div>';
+      
+      try {
+        // Use the public endpoint with refresh flag to get fresh data
+        const response = await fetch(`${API_BASE}/federal/awards?refresh=true&limit=100`);
+        const data = await response.json();
+        
+        if (data.error) {
+          throw new Error(data.error);
+        }
+        
+        // Reload dashboard to show updated data
+        await loadDashboard();
+        
+        // Show success message briefly
+        const successMsg = document.createElement('div');
+        successMsg.className = 'alert-box';
+        successMsg.style.background = '#c6f6d5';
+        successMsg.style.borderColor = '#38a169';
+        successMsg.innerHTML = `
+          <strong>Federal data refreshed!</strong> 
+          Found ${data.totalAwards} awards totaling ${formatCurrency(data.totalAmount)} 
+          ${data.importedRecords ? `(${data.importedRecords} new records imported)` : ''}
+        `;
+        container.parentNode.insertBefore(successMsg, container);
+        setTimeout(() => successMsg.remove(), 5000);
+        
+      } catch (err) {
+        console.error('Error refreshing federal data:', err);
+        container.innerHTML = `
+          <div class="error">
+            <strong>Error loading federal data:</strong> ${err.message}
+            <br><button class="btn btn-sm" onclick="refreshFederalData()" style="margin-top: 0.5rem;">Try Again</button>
+          </div>
+        `;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Refresh Data';
+      }
+    }
+    
     // Dashboard
     async function loadDashboard() {
       try {
-        const [dashRes, reportRes] = await Promise.all([
+        // Fetch all data in parallel
+        const [dashRes, reportRes, federalRes] = await Promise.all([
           fetch(`${API_BASE}/dashboard`),
-          fetch(`${API_BASE}/reports/summary`)
+          fetch(`${API_BASE}/reports/summary`),
+          fetch(`${API_BASE}/federal/summary`)
         ]);
         const data = await dashRes.json();
         const report = await reportRes.json();
+        const federalData = await federalRes.json();
+        
+        // Render federal funding section
+        renderFederalFunding(federalData);
         
         // Stats grid
         document.getElementById('stats-grid').innerHTML = `

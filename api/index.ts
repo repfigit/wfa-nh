@@ -1024,6 +1024,156 @@ app.get('/api/trigger/runs', asyncHandler(async (req, res) => {
   }
 }))
 
+// ============================================
+// FEDERAL DATA ENDPOINTS (Public - real data!)
+// ============================================
+
+// Get federal CCDF awards from USAspending.gov (cached in DB + live fetch option)
+app.get('/api/federal/awards', asyncHandler(async (req, res) => {
+  await ensureInitialized();
+  const refresh = req.query.refresh === 'true';
+  const fiscalYear = req.query.fiscal_year ? parseInt(req.query.fiscal_year as string) : undefined;
+  const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+  
+  // Check if we have recent data in the database
+  let awards = await query(`
+    SELECT * FROM expenditures 
+    WHERE source_url LIKE 'USAspending:%' 
+    ${fiscalYear ? 'AND fiscal_year = ?' : ''}
+    ORDER BY amount DESC 
+    LIMIT ?
+  `, fiscalYear ? [fiscalYear, limit] : [limit]);
+  
+  // If no data or refresh requested, fetch from API
+  if (awards.length === 0 || refresh) {
+    try {
+      const result = await scrapeUSASpending(fiscalYear);
+      if (result.success && result.awards) {
+        // Return fresh data
+        res.json({
+          source: 'USAspending.gov (live)',
+          cached: false,
+          totalAwards: result.totalAwards,
+          totalAmount: result.totalAmount,
+          fiscalYears: result.fiscalYears,
+          importedRecords: result.importedRecords,
+          awards: result.awards.slice(0, limit),
+        });
+        return;
+      }
+    } catch (error) {
+      console.error('Error fetching live USAspending data:', error);
+      // Fall through to return cached data if available
+    }
+  }
+  
+  // Return cached data from database
+  const totalResult = await query(`
+    SELECT 
+      COUNT(*) as count,
+      SUM(amount) as total,
+      GROUP_CONCAT(DISTINCT fiscal_year) as years
+    FROM expenditures 
+    WHERE source_url LIKE 'USAspending:%'
+    ${fiscalYear ? 'AND fiscal_year = ?' : ''}
+  `, fiscalYear ? [fiscalYear] : []);
+  
+  const stats = totalResult[0] || { count: 0, total: 0, years: '' };
+  
+  res.json({
+    source: 'USAspending.gov (cached)',
+    cached: true,
+    totalAwards: stats.count || 0,
+    totalAmount: stats.total || 0,
+    fiscalYears: stats.years ? stats.years.split(',').map(Number).sort((a: number, b: number) => b - a) : [],
+    awards: awards.map((a: any) => ({
+      awardId: a.source_url?.replace('USAspending:', '') || 'Unknown',
+      recipient: a.vendor_name,
+      amount: a.amount,
+      fiscalYear: a.fiscal_year,
+      description: a.description,
+      agency: a.agency,
+      activity: a.activity,
+    })),
+  });
+}));
+
+// Get federal funding summary for dashboard
+app.get('/api/federal/summary', asyncHandler(async (req, res) => {
+  await ensureInitialized();
+  
+  // Get summary from database
+  const dbSummary = await query(`
+    SELECT 
+      fiscal_year,
+      COUNT(*) as award_count,
+      SUM(amount) as total_amount
+    FROM expenditures 
+    WHERE source_url LIKE 'USAspending:%'
+    GROUP BY fiscal_year
+    ORDER BY fiscal_year DESC
+  `);
+  
+  // Calculate totals
+  const totalAmount = dbSummary.reduce((sum: number, row: any) => sum + (row.total_amount || 0), 0);
+  const totalAwards = dbSummary.reduce((sum: number, row: any) => sum + (row.award_count || 0), 0);
+  
+  // Try to get live summary if no cached data
+  let liveData: { statePopulation: unknown; totalFederalAmount: unknown } | null = null;
+  if (totalAwards === 0) {
+    try {
+      const overview = await getNHStateOverview();
+      if (overview) {
+        liveData = {
+          statePopulation: (overview as any).population,
+          totalFederalAmount: (overview as any).total_face_value_prime_awards,
+        };
+      }
+    } catch (error) {
+      console.error('Error fetching NH overview:', error);
+    }
+  }
+  
+  res.json({
+    hasCachedData: totalAwards > 0,
+    totalFederalAmount: totalAmount,
+    totalAwards,
+    byFiscalYear: dbSummary,
+    recentFiscalYear: dbSummary.length > 0 ? dbSummary[0].fiscal_year : null,
+    recentYearAmount: dbSummary.length > 0 ? dbSummary[0].total_amount : 0,
+    liveData,
+    lastUpdated: new Date().toISOString(),
+    ccdfPrograms: [
+      { cfda: '93.575', name: 'Child Care and Development Block Grant' },
+      { cfda: '93.596', name: 'Child Care Mandatory and Matching Funds' },
+    ],
+  });
+}));
+
+// Refresh federal data (protected - triggers API fetch and DB update)
+app.post('/api/federal/refresh', requireAuth, asyncHandler(async (req, res) => {
+  await ensureInitialized();
+  const fiscalYear = req.body.fiscalYear || req.body.fiscal_year;
+  
+  try {
+    const result = await scrapeUSASpending(fiscalYear ? parseInt(fiscalYear) : undefined);
+    res.json({
+      success: result.success,
+      message: result.success ? 'Federal data refreshed successfully' : 'Failed to refresh data',
+      totalAwards: result.totalAwards,
+      totalAmount: result.totalAmount,
+      importedRecords: result.importedRecords,
+      fiscalYears: result.fiscalYears,
+      error: result.error,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+}));
+
 // Search
 app.get('/api/search', asyncHandler(async (req, res) => {
   await ensureInitialized();
