@@ -341,8 +341,6 @@ app.post('/api/admin/cleanup-duplicates', asyncHandler(async (req, res) => {
 // Force schema creation and seeding (admin endpoint)
 app.post('/api/admin/init-db', asyncHandler(async (req, res) => {
   console.log('Manually initializing database...');
-  const { initDb, query } = await import('../src/db/db-adapter.js');
-  const { postgresSchema, postgresDataSources, postgresKeywords } = await import('../src/db/schema-postgres.js');
   const { createClient } = await import('@libsql/client');
   
   try {
@@ -352,29 +350,120 @@ app.post('/api/admin/init-db', asyncHandler(async (req, res) => {
       authToken: process.env.TURSO_AUTH_TOKEN,
     });
     
-    // Split schema into individual statements
-    const schemaStatements = postgresSchema
-      .split(';')
-      .map(s => s.trim())
-      .filter(s => s.length > 0 && !s.startsWith('--'));
-    
-    console.log(`Executing ${schemaStatements.length} schema statements...`);
-    
     const results: string[] = [];
-    for (let i = 0; i < schemaStatements.length; i++) {
-      const stmt = schemaStatements[i];
+    
+    // Create data_sources table directly
+    try {
+      await client.execute(`
+        CREATE TABLE IF NOT EXISTS data_sources (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL UNIQUE,
+          url TEXT,
+          type TEXT,
+          last_scraped TEXT,
+          notes TEXT,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      results.push('data_sources table: CREATED');
+    } catch (err: any) {
+      results.push(`data_sources table: ERROR - ${err.message}`);
+    }
+    
+    // Create keywords table
+    try {
+      await client.execute(`
+        CREATE TABLE IF NOT EXISTS keywords (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          keyword TEXT NOT NULL UNIQUE,
+          category TEXT,
+          weight REAL DEFAULT 1.0
+        )
+      `);
+      results.push('keywords table: CREATED');
+    } catch (err: any) {
+      results.push(`keywords table: ERROR - ${err.message}`);
+    }
+    
+    // Create other missing tables
+    const otherTables = [
+      `CREATE TABLE IF NOT EXISTS contractors (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        dba_name TEXT,
+        address TEXT,
+        city TEXT,
+        state TEXT,
+        zip TEXT,
+        is_immigrant_owned INTEGER DEFAULT 0,
+        owner_background TEXT,
+        vendor_id TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )`,
+      `CREATE TABLE IF NOT EXISTS contracts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        contractor_id INTEGER,
+        contract_number TEXT,
+        description TEXT,
+        department TEXT,
+        agency TEXT,
+        start_date TEXT,
+        end_date TEXT,
+        original_amount REAL,
+        current_amount REAL,
+        status TEXT,
+        contract_type TEXT,
+        source_url TEXT,
+        approval_date TEXT,
+        gc_item_number TEXT,
+        notes TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )`,
+      `CREATE TABLE IF NOT EXISTS expenditures (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        provider_id INTEGER,
+        contractor_id INTEGER,
+        contract_id INTEGER,
+        fiscal_year INTEGER,
+        department TEXT,
+        agency TEXT,
+        activity TEXT,
+        expense_class TEXT,
+        vendor_name TEXT,
+        amount REAL,
+        payment_date TEXT,
+        check_number TEXT,
+        description TEXT,
+        source_url TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )`,
+      `CREATE TABLE IF NOT EXISTS scrape_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        data_source_id INTEGER,
+        started_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        completed_at TEXT,
+        records_found INTEGER DEFAULT 0,
+        records_imported INTEGER DEFAULT 0,
+        status TEXT DEFAULT 'running',
+        error_message TEXT
+      )`
+    ];
+    
+    for (const sql of otherTables) {
       try {
-        await client.execute(stmt);
-        results.push(`Statement ${i + 1}: OK`);
+        await client.execute(sql);
+        results.push('Table created: OK');
       } catch (err: any) {
-        results.push(`Statement ${i + 1}: ERROR - ${err.message}`);
+        results.push(`Table error: ${err.message}`);
       }
     }
     
     // Check tables now
     const tables = await client.execute("SELECT name FROM sqlite_master WHERE type='table'");
     
-    // Seed data sources if table exists and is empty
+    // Seed data sources
+    const { dataSources } = await import('../src/db/data-sources.js');
+    
     let dsCount = 0;
     try {
       const countResult = await client.execute('SELECT COUNT(*) as count FROM data_sources');
@@ -385,34 +474,19 @@ app.post('/api/admin/init-db', asyncHandler(async (req, res) => {
     
     if (dsCount === 0) {
       console.log('Seeding data sources...');
-      const seedStatements = postgresDataSources
-        .split(';')
-        .map(s => s.trim())
-        .filter(s => s.length > 0 && !s.startsWith('--'));
-      
-      for (const stmt of seedStatements) {
+      for (const ds of dataSources) {
         try {
-          await client.execute(stmt);
-          results.push('Data sources seeded: OK');
+          await client.execute({
+            sql: 'INSERT OR IGNORE INTO data_sources (name, url, type, notes) VALUES (?, ?, ?, ?)',
+            args: [ds.name, ds.url, ds.type, ds.notes]
+          });
         } catch (err: any) {
-          results.push(`Data sources seed: ERROR - ${err.message}`);
+          results.push(`Seed error: ${err.message}`);
         }
       }
-      
-      // Keywords
-      const keywordStatements = postgresKeywords
-        .split(';')
-        .map(s => s.trim())
-        .filter(s => s.length > 0 && !s.startsWith('--'));
-      
-      for (const stmt of keywordStatements) {
-        try {
-          await client.execute(stmt);
-          results.push('Keywords seeded: OK');
-        } catch (err: any) {
-          results.push(`Keywords seed: ERROR - ${err.message}`);
-        }
-      }
+      results.push(`Seeded ${dataSources.length} data sources`);
+    } else {
+      results.push(`Data sources already seeded: ${dsCount}`);
     }
     
     // Final check
