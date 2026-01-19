@@ -3,7 +3,7 @@
  * Works with both SQLite (local) and PostgreSQL (production)
  */
 
-import { initializeDb, closeDb, IS_POSTGRES, IS_LOCAL } from './database.js';
+import { initializeDb, closeDb, IS_LOCAL } from './database.js';
 import { query, execute, saveSqliteDb } from './db-adapter.js';
 
 export async function seedDatabase(skipInit = false) {
