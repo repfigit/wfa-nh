@@ -746,7 +746,7 @@ app.post('/api/admin/create-schema', requireAuth, asyncHandler(async (req, res) 
   try {
     await executeRaw(postgresSchema);
     res.json({ message: 'Schema created successfully' });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Schema creation error:', error);
     res.status(500).json({ error: error.message });
   }

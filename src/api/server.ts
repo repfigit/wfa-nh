@@ -3,28 +3,12 @@ import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { initializeDb, dbHelpers } from '../db/database.js';
-import { query, execute } from '../db/db-adapter.js';
-import { importCSV } from '../importer/csv-importer.js';
+import { query } from '../db/db-adapter.js';
 import { 
-  searchContracts, 
-  scrapeAllChildcareContracts, 
-  saveScrapedContracts,
-  CHILDCARE_KEYWORDS 
-} from '../scraper/nh-das-scraper.js';
-import {
-  detectStructuring,
-  detectDuplicates,
-  analyzeVendorConcentration,
-  runFullFraudAnalysis,
-} from '../analyzer/fraud-detector.js';
-import {
-  scrapeFiscalYear,
-  scrapeRecentYears,
   getAvailableFiscalYears,
 } from '../scraper/transparent-nh-scraper.js';
 import { tasks, runs, configure } from '@trigger.dev/sdk/v3';
-import { scrapeUSASpending, getNHStateOverview } from '../scraper/usaspending-scraper.js';
-import { scrapeACFData, getNHCCDFStats, getAvailableFiscalYears as getACFFiscalYears } from '../scraper/acf-ccdf-scraper.js';
+import { scrapeUSASpending } from '../scraper/usaspending-scraper.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -62,22 +46,32 @@ app.get('/api/providers', asyncHandler(async (req, res) => {
 }));
 
 app.get('/api/providers/:id', asyncHandler(async (req, res) => {
-  const p = await dbHelpers.getProviderWithPayments(parseInt(req.params.id));
+  const idStr = req.params.id as string;
+  const id = parseInt(idStr, 10);
+  if (isNaN(id)) return res.status(400).json({ error: 'Invalid ID' });
+  const p = await dbHelpers.getProviderWithPayments(id);
   p ? res.json(p) : res.status(404).json({ error: 'Not found' });
 }));
 
 app.get('/api/payments', asyncHandler(async (req, res) => {
+  const providerId = typeof req.query.provider_id === 'string' ? parseInt(req.query.provider_id, 10) : undefined;
+  const fiscalYear = typeof req.query.fiscal_year === 'string' ? parseInt(req.query.fiscal_year, 10) : undefined;
+  const limit = typeof req.query.limit === 'string' ? parseInt(req.query.limit, 10) : 100;
+  
   res.json(await dbHelpers.getAllPayments({
-    provider_id: req.query.provider_id ? parseInt(req.query.provider_id as string) : undefined,
-    fiscal_year: req.query.fiscal_year ? parseInt(req.query.fiscal_year as string) : undefined,
-    limit: req.query.limit ? parseInt(req.query.limit as string) : 100,
+    provider_id: providerId,
+    fiscal_year: fiscalYear,
+    limit: limit,
   }));
 }));
 
 app.get('/api/fraud-indicators', asyncHandler(async (req, res) => {
+  const status = typeof req.query.status === 'string' ? req.query.status : undefined;
+  const severity = typeof req.query.severity === 'string' ? req.query.severity : undefined;
+  
   res.json(await dbHelpers.getFraudIndicators({
-    status: req.query.status as string,
-    severity: req.query.severity as string,
+    status,
+    severity,
   }));
 }));
 
@@ -112,7 +106,11 @@ app.get('/api/ingestion/runs', requireAuth, asyncHandler(async (req, res) => {
 
 app.get('/api/federal/summary', asyncHandler(async (req, res) => {
   const summary = await query('SELECT fiscal_year, COUNT(*) as award_count, SUM(amount) as total_amount FROM expenditures WHERE source_url LIKE "USAspending:%" GROUP BY fiscal_year ORDER BY fiscal_year DESC');
-  res.json({ totalFederalAmount: summary.reduce((s:any, r:any) => s + r.total_amount, 0), totalAwards: summary.reduce((s:any, r:any) => s + r.award_count, 0), byFiscalYear: summary });
+  res.json({ 
+    totalFederalAmount: summary.reduce((s: any, r: any) => s + (r.total_amount || 0), 0), 
+    totalAwards: summary.reduce((s: any, r: any) => s + (r.award_count || 0), 0), 
+    byFiscalYear: summary 
+  });
 }));
 
 app.get('/api/federal/awards', asyncHandler(async (req, res) => {
