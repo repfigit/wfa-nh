@@ -1,6 +1,6 @@
 /**
  * Seed database with NH childcare/daycare provider data
- * Works with both SQLite (local) and PostgreSQL (production)
+ * Works with both SQLite (local) and Turso (production)
  */
 
 import { initializeDb, closeDb, IS_LOCAL } from './database.js';

@@ -1,9 +1,9 @@
 /**
  * Turso/libSQL Schema for NH Childcare Payments Tracker
- * Note: Turso uses SQLite syntax, not PostgreSQL
+ * Note: Turso uses SQLite syntax
  */
 
-export const postgresSchema = `
+export const sqliteSchema = `
 -- Childcare Providers (Daycares)
 CREATE TABLE IF NOT EXISTS providers (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -187,16 +187,34 @@ CREATE INDEX IF NOT EXISTS idx_fraud_provider ON fraud_indicators(provider_id);
 CREATE INDEX IF NOT EXISTS idx_fraud_severity ON fraud_indicators(severity);
 CREATE INDEX IF NOT EXISTS idx_fraud_status ON fraud_indicators(status);
 CREATE INDEX IF NOT EXISTS idx_contracts_contractor ON contracts(contractor_id);
+
+-- Ingestion tracking for scheduled collection
+CREATE TABLE IF NOT EXISTS ingestion_runs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('started', 'completed', 'failed')),
+  started_at TEXT NOT NULL,
+  completed_at TEXT,
+  records_processed INTEGER DEFAULT 0,
+  records_imported INTEGER DEFAULT 0,
+  details TEXT,
+  error_message TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_ingestion_source ON ingestion_runs(source);
+CREATE INDEX IF NOT EXISTS idx_ingestion_status ON ingestion_runs(status);
+CREATE INDEX IF NOT EXISTS idx_ingestion_started ON ingestion_runs(started_at);
 `;
 
 import { dataSources } from './data-sources.js';
 
-export const postgresDataSources = `
+export const sqliteDataSources = `
 INSERT OR IGNORE INTO data_sources (name, url, type, notes) VALUES
 ${dataSources.map(ds => `  ('${ds.name}', '${ds.url}', '${ds.type}', '${ds.notes}')`).join(',\n')};
 `;
 
-export const postgresKeywords = `
+export const sqliteKeywords = `
 INSERT OR IGNORE INTO keywords (keyword, category, weight) VALUES
   ('daycare', 'childcare', 2.0),
   ('day care', 'childcare', 2.0),
@@ -229,7 +247,7 @@ INSERT OR IGNORE INTO keywords (keyword, category, weight) VALUES
 `;
 
 export default {
-  postgresSchema,
-  postgresDataSources,
-  postgresKeywords,
+  sqliteSchema,
+  sqliteDataSources,
+  sqliteKeywords,
 };

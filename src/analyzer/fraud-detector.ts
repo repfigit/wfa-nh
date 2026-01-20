@@ -1,7 +1,7 @@
 /**
  * Fraud Detection Analyzer
  * Detects structuring, duplicates, and other fraud patterns
- * Works with both SQLite (local) and PostgreSQL (production)
+ * Works with both SQLite (local) and Turso (production)
  */
 
 import { initializeDb, saveDb } from '../db/database.js';
@@ -228,7 +228,7 @@ export async function detectDuplicates(): Promise<DuplicateFlag[]> {
   const flags: DuplicateFlag[] = [];
   
   // Find duplicate payments (same provider, amount, and month)
-  // Note: GROUP_CONCAT is SQLite-specific, string_agg for PostgreSQL
+  // Note: GROUP_CONCAT is SQLite-specific
   // The adapter handles this conversion
   const duplicatePayments = await query(`
     SELECT 

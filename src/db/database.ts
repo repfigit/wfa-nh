@@ -1,6 +1,6 @@
 /**
  * Database Module
- * Uses PostgreSQL in production (Vercel) and SQLite for local development
+ * Uses Turso (SQLite) in production (Vercel) and SQLite for local development
  */
 
 import { 
@@ -15,7 +15,7 @@ import {
   executeRaw,
 } from './db-adapter.js';
 import { schema, seedData } from './schema.js';
-import { postgresSchema, postgresDataSources, postgresKeywords } from './schema-postgres.js';
+import { sqliteSchema, sqliteDataSources, sqliteKeywords } from './schema-sqlite.js';
 
 // Re-export for backward compatibility
 export { IS_TURSO, IS_LOCAL };
@@ -27,15 +27,26 @@ let seeded = false;
  * Initialize the database with schema
  */
 export async function initializeDb(): Promise<void> {
-  if (initialized) return;
-  
+  // Always ensure initDb is called to establish connection
   await initDb();
+
+  if (initialized) {
+    // If already initialized in this process, still check for critical tables
+    // to handle cases where schema was updated but process stayed alive
+    try {
+      await query('SELECT 1 FROM ingestion_runs LIMIT 1');
+      return;
+    } catch (e) {
+      console.log('Critical table ingestion_runs missing, re-running schema initialization...');
+      // Continue to re-run schema
+    }
+  }
   
   if (IS_TURSO()) {
-    // Initialize Turso with PostgreSQL schemas
+    // Initialize Turso with SQLite schemas
     console.log('Initializing Turso schema...');
     try {
-      await executeRaw(postgresSchema);
+      await executeRaw(sqliteSchema);
       console.log('Turso schema executed successfully');
     } catch (error) {
       console.error('Error executing Turso schema:', error);
@@ -48,8 +59,8 @@ export async function initializeDb(): Promise<void> {
     
     if (count === 0) {
       console.log('Seeding Turso database...');
-      await executeRaw(postgresDataSources);
-      await executeRaw(postgresKeywords);
+      await executeRaw(sqliteDataSources);
+      await executeRaw(sqliteKeywords);
     } else {
       console.log(`Turso database already seeded with ${count} data sources`);
     }
@@ -84,7 +95,7 @@ export async function initializeDb(): Promise<void> {
  */
 export async function getDb() {
   if (IS_TURSO()) {
-    // Return a wrapper that mimics sql.js interface for PostgreSQL
+    // Return a wrapper that mimics sql.js interface for SQLite/Turso
     return {
       run: async (sqlQuery: string, params: any[] = []) => {
         await execute(sqlQuery, params);
@@ -103,7 +114,7 @@ export async function getDb() {
           bind: (params: any[]) => { boundParams = params; },
           step: () => {
             if (results === null) {
-              // This is a sync operation, which won't work well with async PG
+              // This is a sync operation, which won't work well with async
               // For now, we'll handle this in the calling code
               return false;
             }
@@ -279,7 +290,7 @@ export const dbHelpers = {
       ORDER BY fiscal_year, fiscal_month
     `);
 
-    // Convert string counts to numbers (PostgreSQL returns strings for COUNT)
+    // Convert string counts to numbers (Turso/libSQL might return strings for COUNT)
     const toNum = (v: any) => typeof v === 'string' ? parseInt(v, 10) : (v || 0);
 
     return {
@@ -377,7 +388,7 @@ export const dbHelpers = {
     console.log('Cleaning up duplicate data sources...');
     
     if (IS_TURSO()) {
-      // For PostgreSQL, use a more complex query to keep one of each unique combination
+      // For Turso/SQLite, use a query to keep one of each unique combination
       await execute(`
         DELETE FROM data_sources 
         WHERE id NOT IN (

@@ -907,7 +907,7 @@ async function saveRecords(records: TransparentNHRecord[], fiscalYear: number): 
       if (!providerId && isChildcareRelated(record)) {
         const isImmigrant = isImmigrantRelated(record);
         
-        // Use INSERT ... ON CONFLICT for PostgreSQL compatibility
+        // Use OR IGNORE for SQLite compatibility
         await execute(`
           INSERT INTO providers (name, accepts_ccdf, is_immigrant_owned, notes)
           VALUES (?, 1, ?, 'Auto-created from TransparentNH scrape')
