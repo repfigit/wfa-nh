@@ -19,8 +19,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = process.env.VERCEL ? '/tmp/downloads' : path.join(__dirname, '../../data/downloads');
 
 // TransparentNH fiscal year download URLs (fallback if crawl yields nothing)
+// These URLs follow the expected pattern on the site
 const FISCAL_YEAR_URLS: Record<number, string> = {
-  2026: 'https://www.nh.gov/transparentnh/where-the-money-goes/documents/fy2026.zip',
   2025: 'https://www.nh.gov/transparentnh/where-the-money-goes/documents/fy2025.zip',
   2024: 'https://www.nh.gov/transparentnh/where-the-money-goes/documents/fy2024.zip',
   2023: 'https://www.nh.gov/transparentnh/where-the-money-goes/documents/fy2023.zip',
@@ -30,13 +30,14 @@ const FISCAL_YEAR_URLS: Record<number, string> = {
 };
 
 const TRANSPARENT_NH_ROOTS = [
+  'https://www.nh.gov/transparentnh/where-the-money-goes/fiscal-yr-downloads.htm',
   'https://www.nh.gov/transparentnh/',
   'https://business.nh.gov/ExpenditureTransparency/',
 ];
 
-const CRAWL_MAX_PAGES = 200;
-const CRAWL_MAX_DEPTH = 2;
-const CRAWL_DELAY_MS = 400;
+const CRAWL_MAX_PAGES = 300;
+const CRAWL_MAX_DEPTH = 3;
+const CRAWL_DELAY_MS = 500;
 
 // Keywords to identify childcare-related expenditures
 const CHILDCARE_KEYWORDS = [
@@ -403,27 +404,22 @@ async function downloadDiscoveredFiles(
         continue;
       }
 
-      const response = await fetch(url, {
-        headers: getBrowserHeaders(link.sourcePage),
-        redirect: 'follow',
-      });
-
-      const contentType = response.headers.get('content-type') || undefined;
-      if (!response.ok) {
-        results.push({ url, status: response.status, contentType, error: `HTTP ${response.status}` });
-        continue;
-      }
-
-      const buffer = await response.arrayBuffer();
-      writeFileSync(destPath, Buffer.from(buffer));
-      if (isZipUrl(url)) {
-        const zipName = path.basename(new URL(url).pathname) || fileName;
-        const zipTarget = path.join(dataDir, zipName);
-        if (!existsSync(zipTarget)) {
-          writeFileSync(zipTarget, Buffer.from(buffer));
+      // Use the robust downloadFile function logic here
+      const success = await downloadFile(url, destPath);
+      
+      if (success) {
+        if (isZipUrl(url)) {
+          const zipName = path.basename(new URL(url).pathname) || fileName;
+          const zipTarget = path.join(dataDir, zipName);
+          if (!existsSync(zipTarget)) {
+            const buffer = readFileSync(destPath);
+            writeFileSync(zipTarget, buffer);
+          }
         }
+        results.push({ url, savedPath: destPath, status: 200 });
+      } else {
+        results.push({ url, error: 'Download failed' });
       }
-      results.push({ url, savedPath: destPath, status: response.status, contentType });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       results.push({ url, error: message });
@@ -944,12 +940,17 @@ export async function scrapeFiscalYear(fiscalYear: number): Promise<ScrapeResult
   };
 
   try {
-    let url = FISCAL_YEAR_URLS[fiscalYear];
+    // Prefer crawler discovery over hardcoded fallbacks
+    let url: string | undefined;
+    
+    console.log(`Searching for FY${fiscalYear} download link via crawler...`);
+    const crawl = await crawlTransparentNH(TRANSPARENT_NH_ROOTS, CRAWL_MAX_PAGES, CRAWL_MAX_DEPTH);
+    const byYear = groupLinksByFiscalYear(crawl.downloadLinks);
+    url = byYear[fiscalYear];
 
     if (!url) {
-      const crawl = await crawlTransparentNH(TRANSPARENT_NH_ROOTS, CRAWL_MAX_PAGES, CRAWL_MAX_DEPTH);
-      const byYear = groupLinksByFiscalYear(crawl.downloadLinks);
-      url = byYear[fiscalYear];
+      console.log(`Crawler did not find FY${fiscalYear}. Using fallback URL if available...`);
+      url = FISCAL_YEAR_URLS[fiscalYear];
     }
 
     if (!url) {

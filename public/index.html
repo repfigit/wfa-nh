@@ -798,6 +798,8 @@
       document.getElementById('ingestion-history-body').innerHTML = (data.runs || []).map(r => `<tr><td>${r.source}</td><td>${r.status}</td><td>${r.records_processed}</td><td>${r.records_imported}</td><td>${new Date(r.started_at).toLocaleString()}</td><td><button onclick='alert(JSON.stringify(${JSON.stringify(r.details)}))'>View</button></td></tr>`).join('');
     }
 
+    let currentActiveJob = null;
+
     async function refreshJobStatus() {
       try {
         const res = await fetch(`${API_BASE}/trigger/runs`, { headers: getAuthHeaders() });
@@ -805,11 +807,24 @@
         const data = await res.json();
         const active = (data.runs || []).filter(r => ['EXECUTING','PENDING', 'QUEUED', 'REATTEMPTING'].includes(r.status));
         
+        currentActiveJob = active.length > 0 ? active[0] : null;
+
         // Update active jobs panel
         const panel = document.getElementById('active-jobs-panel');
         if (panel) {
-          panel.style.display = active.length ? 'block' : 'none';
-          document.getElementById('active-jobs-list').innerHTML = active.map(r => `<div>${r.taskIdentifier}: ${r.status}</div>`).join('');
+          panel.style.display = currentActiveJob ? 'block' : 'none';
+          document.getElementById('active-jobs-list').innerHTML = active.map(r => `
+            <div class="active-job-item">
+              <div style="display:flex; justify-content:space-between; margin-bottom:0.5rem;">
+                <strong>${r.taskIdentifier}</strong>
+                <span class="badge">${r.status}</span>
+              </div>
+              <div class="progress-bar-bg">
+                <div class="progress-bar-fill" style="width: ${r.status === 'EXECUTING' ? '60%' : '20%'}"></div>
+              </div>
+              <div style="font-size:0.7rem; color:rgba(255,255,255,0.8)">Started: ${new Date(r.createdAt).toLocaleString()}</div>
+            </div>
+          `).join('');
         }
 
         // Disable/Enable trigger buttons
@@ -834,19 +849,59 @@
       } catch (e) { console.error('Job status refresh failed:', e); }
     }
 
+    async function safeTrigger(taskFn, ...args) {
+      if (currentActiveJob) {
+        alert('A background task is already running. Please wait for it to complete.');
+        return;
+      }
+      
+      // Immediately disable buttons to prevent double-click
+      const triggerButtons = document.querySelectorAll('.scraper-card button, .card-header button[onclick^="start"]');
+      triggerButtons.forEach(btn => {
+        btn.disabled = true;
+        btn.style.opacity = '0.5';
+        btn.style.cursor = 'not-allowed';
+      });
+
+      try {
+        await taskFn(...args);
+      } catch (e) {
+        alert('Task failed to start: ' + e.message);
+        refreshJobStatus();
+      }
+    }
+
     async function startTransparentNHCrawlIngest(dryRun) {
-      await fetch(`${API_BASE}/trigger/transparent-nh`, { method: 'POST', headers: getAuthHeaders(), body: JSON.stringify({ crawlIngest: true, dryRun }) });
-      refreshJobStatus();
+      await safeTrigger(async () => {
+        await fetch(`${API_BASE}/trigger/transparent-nh`, { 
+          method: 'POST', 
+          headers: getAuthHeaders(), 
+          body: JSON.stringify({ crawlIngest: true, dryRun }) 
+        });
+        refreshJobStatus();
+      });
     }
 
     async function startUSASpendingScraper() {
-      await fetch(`${API_BASE}/trigger/usaspending`, { method: 'POST', headers: getAuthHeaders(), body: JSON.stringify({}) });
-      refreshJobStatus();
+      await safeTrigger(async () => {
+        await fetch(`${API_BASE}/trigger/usaspending`, { 
+          method: 'POST', 
+          headers: getAuthHeaders(), 
+          body: JSON.stringify({}) 
+        });
+        refreshJobStatus();
+      });
     }
 
     async function startFraudAnalysis() {
-      await fetch(`${API_BASE}/trigger/fraud-analysis`, { method: 'POST', headers: getAuthHeaders(), body: JSON.stringify({}) });
-      refreshJobStatus();
+      await safeTrigger(async () => {
+        await fetch(`${API_BASE}/trigger/fraud-analysis`, { 
+          method: 'POST', 
+          headers: getAuthHeaders(), 
+          body: JSON.stringify({}) 
+        });
+        refreshJobStatus();
+      });
     }
 
     async function confirmInitDb() { if (prompt('Type RESET:')==='RESET') await fetch(`${API_BASE}/admin/init-db`, { method: 'POST', headers: getAuthHeaders() }); }
