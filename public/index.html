@@ -314,26 +314,6 @@
     footer a { color: var(--primary); }
     
     /* API Key Configuration */
-    .api-key-box {
-      background: #f0f9ff;
-      border: 1px solid #3182ce;
-      border-radius: 6px;
-      padding: 1rem;
-      margin-bottom: 1rem;
-    }
-    .api-key-box h4 {
-      font-size: 0.875rem;
-      color: #2c5282;
-      margin-bottom: 0.5rem;
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-    }
-    .api-key-box p {
-      font-size: 0.8rem;
-      color: var(--text-light);
-      margin-bottom: 0.75rem;
-    }
     .api-key-input-group {
       display: flex;
       gap: 0.5rem;
@@ -346,34 +326,8 @@
       font-size: 0.875rem;
       font-family: 'SF Mono', Monaco, Consolas, monospace;
     }
-    .api-key-status {
-      font-size: 0.75rem;
-      margin-top: 0.5rem;
-      display: flex;
-      align-items: center;
-      gap: 0.25rem;
-    }
-    .api-key-status.configured { color: var(--success); }
-    .api-key-status.not-configured { color: var(--warning); }
     
     /* Progress Bar Styles */
-    .progress-container {
-      margin: 1rem 0;
-      padding: 1rem;
-      background: var(--bg);
-      border-radius: 6px;
-      border: 1px solid var(--border);
-    }
-    .progress-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 0.5rem;
-    }
-    .progress-title {
-      font-weight: 500;
-      font-size: 0.875rem;
-    }
     .progress-status {
       font-size: 0.75rem;
       padding: 0.2rem 0.5rem;
@@ -397,20 +351,6 @@
       border-radius: 4px;
       transition: width 0.3s ease;
     }
-    .progress-bar-fill.completed { background: linear-gradient(90deg, var(--success), #48bb78); }
-    .progress-bar-fill.failed { background: linear-gradient(90deg, var(--danger), #f56565); }
-    .progress-step {
-      font-size: 0.75rem;
-      color: var(--text-light);
-    }
-    .progress-stats {
-      display: flex;
-      gap: 1rem;
-      margin-top: 0.5rem;
-      font-size: 0.75rem;
-      color: var(--text-light);
-    }
-    .progress-stats span { display: flex; align-items: center; gap: 0.25rem; }
     
     /* Scraper Grid */
     .scraper-grid {
@@ -487,24 +427,6 @@
       border-radius: 6px;
       padding: 0.75rem;
     }
-    .active-job-item .job-name {
-      font-weight: 500;
-      font-size: 0.875rem;
-    }
-    .active-job-item .job-progress {
-      margin-top: 0.5rem;
-    }
-    .active-job-item .progress-bar-bg {
-      background: rgba(255,255,255,0.2);
-    }
-    .active-job-item .progress-bar-fill {
-      background: white;
-    }
-    .active-job-item .job-step {
-      font-size: 0.75rem;
-      opacity: 0.8;
-      margin-top: 0.25rem;
-    }
     
     @media (max-width: 768px) {
       main { padding: 1rem; }
@@ -530,8 +452,8 @@
     <a href="#" data-view="providers">Providers</a>
     <a href="#" data-view="payments">Payments</a>
     <a href="#" data-view="fraud">Fraud Indicators</a>
-    <a href="#" data-view="tools">Import & Analysis</a>
     <a href="#" data-view="sources">Data Sources</a>
+    <a href="#" data-view="tools">Admin</a>
   </nav>
   
   <main>
@@ -539,17 +461,16 @@
     <div id="dashboard-view" class="view active">
       <div class="alert-box">
         <h4>Federal CCDF Fraud Context</h4>
-        <p style="font-size:0.85rem;">The Trump administration froze CCDF funding in several states (notably Minnesota) due to daycare fraud allegations, particularly involving immigrant-owned daycares. NH receives ~$30M annually in CCDF funds. This tool tracks payments for potential fraud patterns.</p>
+        <p style="font-size:0.85rem;">NH receives ~$30M annually in CCDF funds. This tool tracks payments for potential fraud patterns.</p>
       </div>
       
-      <!-- Federal Funding Summary Card -->
       <div class="card" id="federal-funding-card" style="margin-bottom: 1.5rem; border-left: 4px solid #2c5282;">
         <div class="card-header">
           <h2>Federal CCDF Funding (USAspending.gov)</h2>
           <button class="btn btn-sm btn-outline" onclick="refreshFederalData()" id="refresh-federal-btn">Refresh Data</button>
         </div>
         <div class="card-body" id="federal-funding-content">
-          <div class="loading">Loading federal funding data...</div>
+          <div class="loading">Loading...</div>
         </div>
       </div>
       
@@ -580,35 +501,7 @@
         <div class="card-body">
           <table id="top-providers">
             <thead>
-              <tr>
-                <th>Provider</th>
-                <th>City</th>
-                <th>Type</th>
-                <th>Capacity</th>
-                <th>Max Children</th>
-                <th>Total Payments</th>
-                <th>Flags</th>
-              </tr>
-            </thead>
-            <tbody><tr><td colspan="7" class="loading">Loading...</td></tr></tbody>
-          </table>
-        </div>
-      </div>
-      
-      <div class="card">
-        <div class="card-header"><h2>Recent Payments</h2></div>
-        <div class="card-body">
-          <table id="recent-payments">
-            <thead>
-              <tr>
-                <th>Provider</th>
-                <th>Month</th>
-                <th>Amount</th>
-                <th>Children</th>
-                <th>$/Child</th>
-                <th>Capacity</th>
-                <th>Status</th>
-              </tr>
+              <tr><th>Provider</th><th>City</th><th>Type</th><th>Capacity</th><th>Max Children</th><th>Total Payments</th><th>Flags</th></tr>
             </thead>
             <tbody><tr><td colspan="7" class="loading">Loading...</td></tr></tbody>
           </table>
@@ -625,24 +518,13 @@
           <option value="immigrant">Immigrant-Owned Only</option>
         </select>
         <button class="btn" onclick="searchProviders()">Search</button>
-        <button class="btn btn-outline" onclick="exportData('providers')">Export</button>
       </div>
-      
       <div class="card">
         <div class="card-header"><h2>Childcare Providers</h2></div>
         <div class="card-body" style="overflow-x:auto;">
           <table id="providers-table">
             <thead>
-              <tr>
-                <th>Name</th>
-                <th>Owner</th>
-                <th>City</th>
-                <th>Type</th>
-                <th>Capacity</th>
-                <th>Languages</th>
-                <th>Total Payments</th>
-                <th>Flags</th>
-              </tr>
+              <tr><th>Name</th><th>Owner</th><th>City</th><th>Type</th><th>Capacity</th><th>Languages</th><th>Total Payments</th><th>Flags</th></tr>
             </thead>
             <tbody><tr><td colspan="8" class="loading">Loading...</td></tr></tbody>
           </table>
@@ -658,24 +540,13 @@
           <option value="2024">FY 2024</option>
           <option value="2023">FY 2023</option>
         </select>
-        <button class="btn btn-outline" onclick="exportData('payments')">Export CSV</button>
       </div>
-      
       <div class="card">
         <div class="card-header"><h2>CCDF Scholarship Payments</h2></div>
         <div class="card-body" style="overflow-x:auto;">
           <table id="payments-table">
             <thead>
-              <tr>
-                <th>Provider</th>
-                <th>Immigrant?</th>
-                <th>FY</th>
-                <th>Month</th>
-                <th>Amount</th>
-                <th>Children</th>
-                <th>$/Child</th>
-                <th>Funding</th>
-              </tr>
+              <tr><th>Provider</th><th>Immigrant?</th><th>FY</th><th>Month</th><th>Amount</th><th>Children</th><th>$/Child</th><th>Funding</th></tr>
             </thead>
             <tbody><tr><td colspan="8" class="loading">Loading...</td></tr></tbody>
           </table>
@@ -685,48 +556,18 @@
     
     <!-- Fraud Indicators View -->
     <div id="fraud-view" class="view">
-      <div class="alert-box danger">
-        <h4>CCDF Fraud Patterns Being Tracked</h4>
-        <ul style="font-size:0.85rem;margin-left:1.5rem;">
-          <li><strong>Over-capacity billing</strong> - Billing for more children than licensed capacity</li>
-          <li><strong>Rapid payment growth</strong> - Suspicious increases (e.g., 500%+ in 6 months)</li>
-          <li><strong>High payment rates</strong> - Unusually high $/child/month</li>
-          <li><strong>Review recommended</strong> - Immigrant-owned providers with significant payments (for compliance review)</li>
-        </ul>
-      </div>
-      
       <div class="card">
         <div class="card-header">
           <h2>Fraud Indicators</h2>
-          <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
-            <select id="fraud-severity-filter" onchange="loadFraudIndicators()">
-              <option value="">All Severities</option>
-              <option value="critical">Critical</option>
-              <option value="high">High</option>
-              <option value="medium">Medium</option>
-              <option value="low">Low</option>
-            </select>
-            <select id="fraud-status-filter" onchange="loadFraudIndicators()">
-              <option value="">All Statuses</option>
-              <option value="open">Open</option>
-              <option value="investigating">Investigating</option>
-              <option value="resolved">Resolved</option>
-              <option value="dismissed">Dismissed</option>
-            </select>
-            <button class="btn btn-sm btn-outline" onclick="exportData('fraud')">Export</button>
+          <div style="display:flex;gap:0.5rem;">
+            <select id="fraud-severity-filter" onchange="loadFraudIndicators()"><option value="">All Severities</option><option value="critical">Critical</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select>
+            <select id="fraud-status-filter" onchange="loadFraudIndicators()"><option value="">All Statuses</option><option value="open">Open</option><option value="investigating">Investigating</option><option value="resolved">Resolved</option><option value="dismissed">Dismissed</option></select>
           </div>
         </div>
         <div class="card-body" style="overflow-x:auto;">
           <table id="fraud-table">
             <thead>
-              <tr>
-                <th>Severity</th>
-                <th>Type</th>
-                <th>Description</th>
-                <th>Evidence</th>
-                <th>Provider</th>
-                <th>Status</th>
-              </tr>
+              <tr><th>Severity</th><th>Type</th><th>Description</th><th>Evidence</th><th>Provider</th><th>Status</th></tr>
             </thead>
             <tbody><tr><td colspan="6" class="loading">Loading...</td></tr></tbody>
           </table>
@@ -734,259 +575,89 @@
       </div>
     </div>
     
-    <!-- Import & Analysis Tools View -->
+    <!-- Admin Panel View -->
     <div id="tools-view" class="view">
-      <div class="alert-box">
-        <h4>Data Integration Tools</h4>
-        <p style="font-size:0.85rem;">Import data from TransparentNH, scrape NH DAS contracts, and run fraud analysis. All data integrates into the common database.</p>
-      </div>
-      
-      <!-- API Key Configuration -->
-      <div class="api-key-box">
-        <h4>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-          </svg>
-          API Authentication
-        </h4>
-        <p>Admin operations (scrapers, imports, analysis) require an API key. Enter your key below to enable these features.</p>
-        <div class="api-key-input-group">
-          <input type="password" id="api-key-input" placeholder="Enter your API key..." onchange="saveApiKey()">
-          <button class="btn btn-sm" onclick="toggleApiKeyVisibility()">Show</button>
-          <button class="btn btn-sm btn-outline" onclick="clearApiKey()">Clear</button>
-        </div>
-        <div id="api-key-status" class="api-key-status not-configured">
-          No API key configured - admin features may be restricted
+      <div id="admin-login-view">
+        <div class="card" style="max-width: 500px; margin: 2rem auto;">
+          <div class="card-header"><h2>Admin Authentication</h2></div>
+          <div class="card-body">
+            <p style="margin-bottom: 1rem; font-size: 0.875rem;">Access to processing features requires an API key.</p>
+            <div class="api-key-input-group">
+              <input type="password" id="admin-api-key-input" placeholder="Enter ADMIN_API_KEY...">
+              <button class="btn" onclick="loginAdmin()">Login</button>
+            </div>
+            <p id="admin-login-error" style="color: var(--danger); font-size: 0.75rem; margin-top: 0.5rem; display: none;"></p>
+          </div>
         </div>
       </div>
-      
-      <!-- Active Jobs Panel (shows when scrapers are running) -->
-      <div id="active-jobs-panel" class="active-jobs-panel" style="display:none;">
-        <h3><span class="spinner"></span> Active Scraper Jobs</h3>
-        <div id="active-jobs-list" class="active-jobs-list"></div>
-      </div>
-      
-      <!-- Scraper Cards Grid -->
-      <div class="card">
-        <div class="card-header">
-          <h2>Data Scrapers</h2>
-          <button class="btn btn-sm btn-outline" onclick="refreshJobStatus()">Refresh Status</button>
+
+      <div id="admin-features-view" style="display: none;">
+        <div class="card-header" style="background: white; border-radius: 8px 8px 0 0; margin-bottom: 1.5rem; border: 1px solid var(--border);">
+          <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+            <h2 style="font-size: 1.25rem;">Admin</h2>
+            <button class="btn btn-sm btn-outline" onclick="logoutAdmin()">Logout</button>
+          </div>
         </div>
-        <div class="card-body">
-          <div class="scraper-grid">
-            <!-- TransparentNH Scraper -->
-            <div class="scraper-card">
-              <h4>
-                <span class="icon" style="background:#38a169;color:white;">$</span>
-                TransparentNH Expenditures
-                <span style="background:#f6ad55;color:#744210;font-size:0.65rem;padding:2px 6px;border-radius:4px;margin-left:auto;">May be blocked</span>
-              </h4>
-              <p>Download official expenditure data from NH state budget transparency portal. <strong style="color:#c53030;">Note: NH.gov often blocks automated requests.</strong></p>
-              <div style="margin-bottom:0.75rem;">
-                <select id="fiscal-year-select" style="width:100%;padding:0.5rem;border:1px solid var(--border);border-radius:4px;font-size:0.875rem;">
-                  <option value="">Loading years...</option>
-                </select>
+
+        <div id="active-jobs-panel" class="active-jobs-panel" style="display:none;">
+          <h3><span class="spinner"></span> Active Scraper Jobs</h3>
+          <div id="active-jobs-list" class="active-jobs-list"></div>
+        </div>
+        
+        <div class="card">
+          <div class="card-header"><h2>Data Scrapers & Discovery</h2><button class="btn btn-sm btn-outline" onclick="refreshJobStatus()">Refresh Status</button></div>
+          <div class="card-body">
+            <div class="scraper-grid">
+              <div class="scraper-card">
+                <h4><span class="icon" style="background:#38a169;color:white;">$</span>TransparentNH Discover & Ingest</h4>
+                <p>Crawl TransparentNH roots to discover and ingest expenditure ZIP files.</p>
+                <div class="scraper-actions">
+                  <button class="btn btn-sm" onclick="startTransparentNHCrawlIngest(false)">Run Discovery + Ingest</button>
+                  <button class="btn btn-sm btn-outline" onclick="startTransparentNHCrawlIngest(true)">Dry Run</button>
+                </div>
               </div>
-              <div class="scraper-actions">
-                <button class="btn btn-sm" onclick="startTransparentNHScraper()">Scrape Year</button>
-                <button class="btn btn-sm btn-outline" onclick="startTransparentNHRecent()">Last 3 Years</button>
+              <div class="scraper-card">
+                <h4><span class="icon" style="background:#3182ce;color:white;">F</span>USAspending.gov (Federal)</h4>
+                <p>Fetch federal CCDF grant awards to NH.</p>
+                <div class="scraper-actions"><button class="btn btn-sm" onclick="startUSASpendingScraper()">Fetch Awards</button></div>
               </div>
-              <div id="transparent-nh-progress" style="display:none;"></div>
-            </div>
-            
-            <!-- NH DAS Contracts Scraper -->
-            <div class="scraper-card">
-              <h4>
-                <span class="icon" style="background:#2c5282;color:white;">C</span>
-                NH DAS Contracts
-              </h4>
-              <p>Search state contracts database for childcare-related vendor agreements and DHHS contracts.</p>
-              <div style="margin-bottom:0.75rem;">
-                <input type="text" id="scrape-keyword" placeholder="Search keyword" value="daycare" 
-                       style="width:100%;padding:0.5rem;border:1px solid var(--border);border-radius:4px;font-size:0.875rem;">
-              </div>
-              <div class="scraper-actions">
-                <button class="btn btn-sm" onclick="startContractsScraper()">Search</button>
-                <button class="btn btn-sm btn-outline" onclick="startFullContractsScraper()">Full Scrape</button>
-              </div>
-              <div id="contracts-progress" style="display:none;"></div>
-            </div>
-            
-            <!-- Fraud Analysis -->
-            <div class="scraper-card">
-              <h4>
-                <span class="icon" style="background:#e53e3e;color:white;">!</span>
-                Fraud Analysis
-              </h4>
-              <p>Run fraud detection algorithms: structuring patterns, duplicate payments, vendor concentration analysis.</p>
-              <div class="scraper-actions">
-                <button class="btn btn-sm" onclick="startFraudAnalysis()">Run Full Analysis</button>
-                <button class="btn btn-sm btn-outline" onclick="detectStructuring()">Structuring</button>
-                <button class="btn btn-sm btn-outline" onclick="detectDuplicates()">Duplicates</button>
-              </div>
-              <div id="fraud-progress" style="display:none;"></div>
-            </div>
-            
-            <!-- USAspending.gov Scraper -->
-            <div class="scraper-card">
-              <h4>
-                <span class="icon" style="background:#3182ce;color:white;">F</span>
-                USAspending.gov (Federal)
-              </h4>
-              <p>Fetch federal CCDF grant awards to NH from USAspending.gov API. Includes CFDA 93.575 and 93.596.</p>
-              <div style="margin-bottom:0.75rem;">
-                <select id="usaspending-year-select" style="width:100%;padding:0.5rem;border:1px solid var(--border);border-radius:4px;font-size:0.875rem;">
-                  <option value="">All Fiscal Years</option>
-                  <option value="2024">FY 2024</option>
-                  <option value="2023">FY 2023</option>
-                  <option value="2022">FY 2022</option>
-                  <option value="2021">FY 2021</option>
-                </select>
-              </div>
-              <div class="scraper-actions">
-                <button class="btn btn-sm" onclick="startUSASpendingScraper()">Fetch Awards</button>
-              </div>
-              <div id="usaspending-progress" style="display:none;"></div>
-            </div>
-            
-            <!-- ACF CCDF Data Scraper -->
-            <div class="scraper-card">
-              <h4>
-                <span class="icon" style="background:#805ad5;color:white;">A</span>
-                ACF CCDF Statistics
-              </h4>
-              <p>Official CCDF expenditure data from ACF.hhs.gov including state/federal spending breakdown.</p>
-              <div style="margin-bottom:0.75rem;">
-                <select id="acf-year-select" style="width:100%;padding:0.5rem;border:1px solid var(--border);border-radius:4px;font-size:0.875rem;">
-                  <option value="2022">FY 2022</option>
-                  <option value="2021">FY 2021</option>
-                  <option value="2020">FY 2020</option>
-                </select>
-              </div>
-              <div class="scraper-actions">
-                <button class="btn btn-sm" onclick="startACFScraper()">Fetch Stats</button>
-                <button class="btn btn-sm btn-outline" onclick="startACFAllYears()">All Years</button>
-              </div>
-              <div id="acf-progress" style="display:none;"></div>
-            </div>
-            
-            <!-- CSV Import -->
-            <div class="scraper-card">
-              <h4>
-                <span class="icon" style="background:#718096;color:white;">+</span>
-                Manual CSV Import
-              </h4>
-              <p>Upload a CSV export from TransparentNH Expenditure Register for manual import.</p>
-              <div style="margin-bottom:0.75rem;">
-                <input type="file" id="csv-file" accept=".csv" style="width:100%;font-size:0.75rem;">
-              </div>
-              <div style="margin-bottom:0.75rem;display:flex;gap:0.5rem;flex-wrap:wrap;">
-                <label style="display:flex;align-items:center;gap:0.25rem;font-size:0.75rem;">
-                  <input type="checkbox" id="filter-childcare" checked> Childcare only
-                </label>
-                <label style="display:flex;align-items:center;gap:0.25rem;font-size:0.75rem;">
-                  <input type="checkbox" id="create-providers"> Auto-create providers
-                </label>
-              </div>
-              <div class="scraper-actions">
-                <button class="btn btn-sm" onclick="importCSV()">Import CSV</button>
+              <div class="scraper-card">
+                <h4><span class="icon" style="background:#e53e3e;color:white;">!</span>Pattern Analysis</h4>
+                <p>Run fraud detection algorithms.</p>
+                <div class="scraper-actions"><button class="btn btn-sm" onclick="startFraudAnalysis()">Run Full Analysis</button></div>
               </div>
             </div>
           </div>
         </div>
-      </div>
-      
-      <!-- Job History -->
-      <div class="card">
-        <div class="card-header">
-          <h2>Recent Scraper Jobs</h2>
-          <button class="btn btn-sm btn-outline" onclick="loadJobHistory()">Refresh</button>
+
+        <div class="card" style="border-top: 4px solid var(--danger);">
+          <div class="card-header"><h2>System Administration</h2></div>
+          <div class="card-body">
+            <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+              <div style="flex: 1; min-width: 250px; background: var(--bg); padding: 1rem; border-radius: 6px;">
+                <h4 style="font-size: 0.875rem; margin-bottom: 0.5rem;">Database Maintenance</h4>
+                <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                  <button class="btn btn-sm btn-outline" onclick="confirmInitDb()" style="color: var(--danger); border-color: var(--danger);">Initialize / Reset Schema</button>
+                  <button class="btn btn-sm btn-outline" onclick="seedSampleData()">Seed Sample Data</button>
+                </div>
+              </div>
+              <div style="flex: 1; min-width: 250px; background: var(--bg); padding: 1rem; border-radius: 6px;">
+                <h4 style="font-size: 0.875rem; margin-bottom: 0.5rem;">System Information</h4>
+                <button class="btn btn-sm btn-outline" onclick="viewDbInfo()">Check Connection</button>
+                <div id="db-info-result" style="font-size: 0.7rem; margin-top: 0.5rem; max-height: 100px; overflow-y: auto;"></div>
+              </div>
+            </div>
+          </div>
         </div>
-        <div class="card-body" style="overflow-x:auto;">
-          <table id="job-history-table">
-            <thead>
-              <tr>
-                <th>Scraper</th>
-                <th>Status</th>
-                <th>Progress</th>
-                <th>Found</th>
-                <th>Imported</th>
-                <th>Started</th>
-                <th>Duration</th>
-              </tr>
-            </thead>
-            <tbody id="job-history-body">
-              <tr><td colspan="7" class="loading">Loading job history...</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-      
-      <!-- Import Results -->
-      <div id="import-result" style="display:none;"></div>
-      
-      <!-- Structuring Detection Results -->
-      <div class="card" id="structuring-card" style="display:none;">
-        <div class="card-header">
-          <h2>Structuring Detection Results</h2>
-        </div>
-        <div class="card-body" style="overflow-x:auto;">
-          <table id="structuring-table">
-            <thead>
-              <tr>
-                <th>Type</th>
-                <th>Vendor</th>
-                <th>Total Amount</th>
-                <th>Transactions</th>
-                <th>Details</th>
-                <th>Severity</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </div>
-      
-      <!-- Duplicate Detection Results -->
-      <div class="card" id="duplicates-card" style="display:none;">
-        <div class="card-header">
-          <h2>Duplicate Transactions</h2>
-        </div>
-        <div class="card-body" style="overflow-x:auto;">
-          <table id="duplicates-table">
-            <thead>
-              <tr>
-                <th>Vendor</th>
-                <th>Amount</th>
-                <th>Date</th>
-                <th>Count</th>
-                <th>Transaction IDs</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </div>
-      
-      <!-- Vendor Concentration -->
-      <div class="card" id="concentration-card" style="display:none;">
-        <div class="card-header">
-          <h2>Vendor Concentration Analysis</h2>
-        </div>
-        <div class="card-body" style="overflow-x:auto;">
-          <table id="concentration-table">
-            <thead>
-              <tr>
-                <th>Vendor</th>
-                <th>Immigrant?</th>
-                <th>Total Amount</th>
-                <th>Transactions</th>
-                <th>Avg Amount</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
+        
+        <div class="card">
+          <div class="card-header"><h2>Ingestion & Job History</h2><button class="btn btn-sm btn-outline" onclick="loadIngestionHistory()">Refresh</button></div>
+          <div class="card-body" style="overflow-x:auto;">
+            <table id="ingestion-history-table">
+              <thead><tr><th>Source</th><th>Status</th><th>Processed</th><th>Imported</th><th>Started</th><th>Details</th></tr></thead>
+              <tbody id="ingestion-history-body"></tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>
@@ -995,168 +666,85 @@
     <div id="sources-view" class="view">
       <div class="card">
         <div class="card-header"><h2>Data Sources</h2></div>
-        <div class="card-body">
-          <p style="margin-bottom:1rem;color:var(--text-light);">
-            This application aggregates data from official New Hampshire state government sources related to childcare and CCDF payments.
-          </p>
-          <div class="data-sources" id="data-sources-list">
-            <div class="loading">Loading...</div>
-          </div>
-        </div>
-      </div>
-      
-      <div class="card">
-        <div class="card-header"><h2>About CCDF Fraud Detection</h2></div>
-        <div class="card-body">
-          <p>This tool tracks New Hampshire CCDF (Child Care and Development Fund) scholarship payments to daycare providers, with focus on identifying potential fraud patterns similar to those uncovered in Minnesota's daycare fraud investigation.</p>
-          <br>
-          <p><strong>Key Fraud Indicators:</strong></p>
-          <ul style="margin-left:1.5rem;margin-top:0.5rem;">
-            <li><strong>Over-capacity billing</strong> - Provider claims payment for more children than their licensed capacity allows</li>
-            <li><strong>Rapid growth</strong> - Payment amounts increasing dramatically in short time periods</li>
-            <li><strong>High payment rates</strong> - $/child/month significantly above average</li>
-            <li><strong>Attendance irregularities</strong> - Billing hours that don't match realistic patterns</li>
-          </ul>
-          <br>
-          <p><strong>NH CCDF Program Facts:</strong></p>
-          <ul style="margin-left:1.5rem;margin-top:0.5rem;">
-            <li>NH receives approximately $30 million annually in federal CCDF funds</li>
-            <li>~500 providers participate in the scholarship program</li>
-            <li>DHHS administers payments through the Child Care Scholarship Program</li>
-          </ul>
-          <br>
-          <p style="color:var(--text-light);font-style:italic;">
-            Flags indicate areas for potential review, not accusations of wrongdoing. All providers deserve due process.
-          </p>
-        </div>
+        <div class="card-body"><div class="data-sources" id="data-sources-list"></div></div>
       </div>
     </div>
   </main>
   
-  <!-- Provider Detail Modal -->
   <div id="provider-modal" class="modal">
     <div class="modal-content">
-      <div class="modal-header">
-        <h3 id="provider-modal-title">Provider Details</h3>
-        <button class="modal-close" onclick="closeModal('provider-modal')">&times;</button>
-      </div>
+      <div class="modal-header"><h3 id="provider-modal-title">Provider Details</h3><button class="modal-close" onclick="closeModal('provider-modal')">&times;</button></div>
       <div class="modal-body" id="provider-modal-body"></div>
     </div>
   </div>
   
-  <footer>
-    <p>Data sourced from official NH state government websites. For research and investigative purposes.</p>
-    <p style="margin-top:0.5rem;">
-      <a href="https://www.nh.gov/transparentnh/" target="_blank">TransparentNH</a> | 
-      <a href="https://www.dhhs.nh.gov/programs-services/childcare-parenting-childbirth/child-care-licensing" target="_blank">NH Child Care Licensing</a> | 
-      <a href="https://www.nh-connections.org/" target="_blank">NH Connections</a>
-    </p>
-  </footer>
-  
   <script>
     const API_BASE = '/api';
     let cityChart, fraudChart;
+    let activeTriggerPollers = {};
     
-    // API Key Management
-    function getApiKey() {
-      return localStorage.getItem('nh-tracker-api-key') || '';
+    window.onload = () => { 
+      loadDashboard(); 
+      // Initial view based on hash or default to dashboard
+      const initialView = window.location.hash.slice(1) || 'dashboard';
+      showView(initialView);
+      checkAdminStatus(); 
+    };
+
+    window.onhashchange = () => {
+      const viewName = window.location.hash.slice(1) || 'dashboard';
+      showView(viewName);
+    };
+    
+    function getApiKey() { return localStorage.getItem('nh-tracker-api-key') || ''; }
+    function loginAdmin() {
+      const key = document.getElementById('admin-api-key-input').value;
+      if (!key) { alert('Enter key'); return; }
+      localStorage.setItem('nh-tracker-api-key', key);
+      checkAdminStatus();
     }
-    
-    function saveApiKey() {
-      const key = document.getElementById('api-key-input').value;
-      if (key) {
-        localStorage.setItem('nh-tracker-api-key', key);
-        updateApiKeyStatus(true);
-      } else {
-        localStorage.removeItem('nh-tracker-api-key');
-        updateApiKeyStatus(false);
-      }
-    }
-    
-    function clearApiKey() {
-      localStorage.removeItem('nh-tracker-api-key');
-      document.getElementById('api-key-input').value = '';
-      updateApiKeyStatus(false);
-    }
-    
-    function toggleApiKeyVisibility() {
-      const input = document.getElementById('api-key-input');
-      const btn = input.nextElementSibling;
-      if (input.type === 'password') {
-        input.type = 'text';
-        btn.textContent = 'Hide';
-      } else {
-        input.type = 'password';
-        btn.textContent = 'Show';
-      }
-    }
-    
-    function updateApiKeyStatus(isConfigured) {
-      const status = document.getElementById('api-key-status');
-      if (status) {
-        if (isConfigured) {
-          status.className = 'api-key-status configured';
-          status.innerHTML = '<span style="color:var(--success);">&#10003;</span> API key configured';
-        } else {
-          status.className = 'api-key-status not-configured';
-          status.innerHTML = 'No API key configured - admin features may be restricted';
-        }
-      }
-    }
-    
-    function loadApiKeyUI() {
+    function logoutAdmin() { localStorage.removeItem('nh-tracker-api-key'); checkAdminStatus(); }
+    function checkAdminStatus() {
       const key = getApiKey();
-      const input = document.getElementById('api-key-input');
-      if (input) {
-        input.value = key;
-        updateApiKeyStatus(!!key);
-      }
+      const loginView = document.getElementById('admin-login-view');
+      const featuresView = document.getElementById('admin-features-view');
+      if (loginView) loginView.style.display = key ? 'none' : 'block';
+      if (featuresView) featuresView.style.display = key ? 'block' : 'none';
+      if (key) { loadIngestionHistory(); refreshJobStatus(); }
     }
+    function getAuthHeaders() { return { 'Content-Type': 'application/json', 'x-api-key': getApiKey() }; }
     
-    // Helper to get auth headers for protected endpoints
-    function getAuthHeaders() {
-      const key = getApiKey();
-      const headers = { 'Content-Type': 'application/json' };
-      if (key) {
-        headers['x-api-key'] = key;
-      }
-      return headers;
-    }
-    
-    // Navigation
     document.querySelectorAll('nav a').forEach(link => {
       link.addEventListener('click', (e) => {
         e.preventDefault();
-        showView(e.target.dataset.view);
+        const viewName = e.target.dataset.view;
+        window.location.hash = viewName;
       });
-    });
-    
-    // Close modal on outside click
-    document.querySelectorAll('.modal').forEach(modal => {
-      modal.addEventListener('click', (e) => {
-        if (e.target === modal) closeModal(modal.id);
-      });
-    });
-    
-    // Close modal on Escape
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-        document.querySelectorAll('.modal.active').forEach(m => closeModal(m.id));
-      }
     });
     
     function showView(viewName) {
+      const validViews = ['dashboard', 'providers', 'payments', 'fraud', 'sources', 'tools'];
+      if (!validViews.includes(viewName)) viewName = 'dashboard';
+
       document.querySelectorAll('nav a').forEach(a => a.classList.remove('active'));
-      document.querySelector(`nav a[data-view="${viewName}"]`).classList.add('active');
-      document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-      document.getElementById(`${viewName}-view`).classList.add('active');
+      const link = document.querySelector(`nav a[data-view="${viewName}"]`);
+      if (link) link.classList.add('active');
       
+      document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+      const view = document.getElementById(`${viewName}-view`);
+      if (view) {
+        view.classList.add('active');
+      } else {
+        console.error(`View element not found: ${viewName}-view`);
+      }
+      
+      if (viewName === 'tools') checkAdminStatus();
+      
+      // Trigger data loading for specific views if not already loaded
       switch(viewName) {
-        case 'dashboard': loadDashboard(); break;
         case 'providers': loadProviders(); break;
         case 'payments': loadPayments(); break;
         case 'fraud': loadFraudIndicators(); break;
-        case 'tools': loadToolsView(); break;
         case 'sources': loadDataSources(); break;
       }
     }
@@ -1164,1483 +752,134 @@
     function openModal(id) { document.getElementById(id).classList.add('active'); }
     function closeModal(id) { document.getElementById(id).classList.remove('active'); }
     
-    // Formatting
-    function formatCurrency(amount) {
-      if (amount === null || amount === undefined) return '-';
-      return '$' + Number(amount).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
-    }
-    
-    function formatMonth(year, month) {
-      if (!year || !month) return '-';
-      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      return `${months[month-1]} ${year}`;
-    }
-    
-    function severityBadge(severity) {
-      return `<span class="badge badge-${severity}">${severity.toUpperCase()}</span>`;
-    }
-    
-    function statusBadge(status) {
-      return `<span class="badge badge-${status}">${status}</span>`;
-    }
-    
-    function capacityStatus(children, capacity) {
-      if (!capacity) return '-';
-      if (children > capacity) {
-        const over = ((children - capacity) / capacity * 100).toFixed(0);
-        return `<span class="capacity-warning">${over}% OVER</span>`;
-      }
-      return `<span style="color:var(--success)">${children}/${capacity}</span>`;
-    }
-    
-    // Federal Funding Display
-    function renderFederalFunding(data) {
-      const container = document.getElementById('federal-funding-content');
-      
-      if (!data || (!data.hasCachedData && !data.liveData)) {
-        container.innerHTML = `
-          <div style="text-align: center; padding: 1rem;">
-            <p style="color: var(--text-light); margin-bottom: 1rem;">No federal funding data loaded yet.</p>
-            <button class="btn" onclick="refreshFederalData()">Load Federal CCDF Data</button>
-            <p style="font-size: 0.75rem; color: var(--text-light); margin-top: 0.5rem;">
-              Data sourced from USAspending.gov (CFDA 93.575 & 93.596)
-            </p>
-          </div>
-        `;
-        return;
-      }
-      
-      const fyBreakdown = (data.byFiscalYear || []).slice(0, 5).map(fy => `
-        <div style="display: flex; justify-content: space-between; padding: 0.5rem 0; border-bottom: 1px solid var(--border);">
-          <span>FY ${fy.fiscal_year}</span>
-          <span class="amount" style="font-weight: 600;">${formatCurrency(fy.total_amount)}</span>
-          <span style="color: var(--text-light); font-size: 0.8rem;">${fy.award_count} awards</span>
-        </div>
-      `).join('');
-      
-      container.innerHTML = `
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem;">
-          <div>
-            <div style="font-size: 0.7rem; text-transform: uppercase; color: var(--text-light); margin-bottom: 0.25rem;">Total Federal CCDF Funding</div>
-            <div style="font-size: 2rem; font-weight: 700; color: #2c5282;">${formatCurrency(data.totalFederalAmount)}</div>
-            <div style="font-size: 0.8rem; color: var(--text-light);">${data.totalAwards} awards tracked</div>
-          </div>
-          <div>
-            <div style="font-size: 0.7rem; text-transform: uppercase; color: var(--text-light); margin-bottom: 0.25rem;">Most Recent FY</div>
-            <div style="font-size: 2rem; font-weight: 700; color: var(--primary);">${data.recentFiscalYear ? 'FY ' + data.recentFiscalYear : 'N/A'}</div>
-            <div style="font-size: 0.8rem; color: var(--text-light);">${formatCurrency(data.recentYearAmount)}</div>
-          </div>
-          <div>
-            <div style="font-size: 0.7rem; text-transform: uppercase; color: var(--text-light); margin-bottom: 0.25rem;">CCDF Programs Tracked</div>
-            <div style="font-size: 0.85rem; margin-top: 0.5rem;">
-              <div><strong>93.575</strong> - Block Grant</div>
-              <div><strong>93.596</strong> - Mandatory/Matching</div>
-            </div>
-          </div>
-        </div>
-        ${fyBreakdown ? `
-          <div style="margin-top: 1.5rem;">
-            <div style="font-size: 0.8rem; font-weight: 600; margin-bottom: 0.5rem;">Awards by Fiscal Year</div>
-            ${fyBreakdown}
-          </div>
-        ` : ''}
-        <div style="margin-top: 1rem; font-size: 0.75rem; color: var(--text-light);">
-          ${data.hasCachedData ? 'Data cached from ' : ''}USAspending.gov | Last updated: ${new Date(data.lastUpdated).toLocaleString()}
-        </div>
-      `;
-    }
-    
-    async function refreshFederalData() {
-      const btn = document.getElementById('refresh-federal-btn');
-      const container = document.getElementById('federal-funding-content');
-      
-      btn.disabled = true;
-      btn.textContent = 'Loading...';
-      container.innerHTML = '<div class="loading">Fetching federal funding data from USAspending.gov...</div>';
-      
-      try {
-        // Use the public endpoint with refresh flag to get fresh data
-        const response = await fetch(`${API_BASE}/federal/awards?refresh=true&limit=100`);
-        const data = await response.json();
-        
-        if (data.error) {
-          throw new Error(data.error);
-        }
-        
-        // Reload dashboard to show updated data
-        await loadDashboard();
-        
-        // Show success message briefly
-        const successMsg = document.createElement('div');
-        successMsg.className = 'alert-box';
-        successMsg.style.background = '#c6f6d5';
-        successMsg.style.borderColor = '#38a169';
-        successMsg.innerHTML = `
-          <strong>Federal data refreshed!</strong> 
-          Found ${data.totalAwards} awards totaling ${formatCurrency(data.totalAmount)} 
-          ${data.importedRecords ? `(${data.importedRecords} new records imported)` : ''}
-        `;
-        container.parentNode.insertBefore(successMsg, container);
-        setTimeout(() => successMsg.remove(), 5000);
-        
-      } catch (err) {
-        console.error('Error refreshing federal data:', err);
-        container.innerHTML = `
-          <div class="error">
-            <strong>Error loading federal data:</strong> ${err.message}
-            <br><button class="btn btn-sm" onclick="refreshFederalData()" style="margin-top: 0.5rem;">Try Again</button>
-          </div>
-        `;
-      } finally {
-        btn.disabled = false;
-        btn.textContent = 'Refresh Data';
-      }
-    }
-    
-    // Dashboard
+    function formatCurrency(v) { return '$' + Number(v||0).toLocaleString(); }
+    function formatMonth(y, m) { return m ? ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][m-1] + ' ' + y : '-'; }
+    function severityBadge(s) { return `<span class="badge badge-${s||'low'}">${(s||'low').toUpperCase()}</span>`; }
+    function statusBadge(s) { return `<span class="badge badge-${s||'open'}">${s||'open'}</span>`; }
+    function capacityStatus(ch, c) { return ch > c ? `<span class="capacity-warning">OVER</span>` : `<span style="color:var(--success)">${ch||0}/${c||0}</span>`; }
+
     async function loadDashboard() {
       try {
-        // Fetch all data in parallel
-        const [dashRes, reportRes, federalRes] = await Promise.all([
-          fetch(`${API_BASE}/dashboard`),
-          fetch(`${API_BASE}/reports/summary`),
-          fetch(`${API_BASE}/federal/summary`)
-        ]);
+        const [dashRes, federalRes] = await Promise.all([fetch(`${API_BASE}/dashboard`), fetch(`${API_BASE}/federal/summary`)]);
         const data = await dashRes.json();
-        const report = await reportRes.json();
-        const federalData = await federalRes.json();
-        
-        // Render federal funding section
-        renderFederalFunding(federalData);
-        
-        // Stats grid
-        document.getElementById('stats-grid').innerHTML = `
-          <div class="stat-card">
-            <h3>Total Providers</h3>
-            <div class="value">${data.total_providers}</div>
-          </div>
-          <div class="stat-card highlight">
-            <h3>Immigrant-Owned</h3>
-            <div class="value">${data.immigrant_providers}</div>
-          </div>
-          <div class="stat-card">
-            <h3>CCDF Payments</h3>
-            <div class="value">${formatCurrency(data.total_payments)}</div>
-          </div>
-          <div class="stat-card ${data.fraud_indicators_count > 0 ? 'warning' : ''}">
-            <h3>Fraud Flags</h3>
-            <div class="value">${data.fraud_indicators_count}</div>
-            <div class="fraud-summary">
-              ${data.fraud_indicators_by_severity.high ? `<span class="fraud-count">${severityBadge('high')} ${data.fraud_indicators_by_severity.high}</span>` : ''}
-              ${data.fraud_indicators_by_severity.medium ? `<span class="fraud-count">${severityBadge('medium')} ${data.fraud_indicators_by_severity.medium}</span>` : ''}
-            </div>
-          </div>
-        `;
-        
-        // Charts
-        renderCharts(report, data);
-        
-        // Top providers
-        const topBody = document.querySelector('#top-providers tbody');
-        if (data.top_providers.length === 0) {
-          topBody.innerHTML = '<tr><td colspan="7">No providers found</td></tr>';
-        } else {
-          topBody.innerHTML = data.top_providers.map(p => `
-            <tr>
-              <td class="clickable" onclick="showProviderDetail(${p.id})">${p.name}</td>
-              <td>${p.city || '-'}</td>
-              <td>${p.provider_type || '-'}</td>
-              <td>${p.capacity || '-'}</td>
-              <td>${capacityStatus(p.max_children, p.capacity)}</td>
-              <td class="amount">${formatCurrency(p.total_payments)}</td>
-              <td>${p.fraud_count > 0 ? `${severityBadge('medium')} ${p.fraud_count}` : '-'}</td>
-            </tr>
-          `).join('');
-        }
-        
-        // Recent payments
-        const recentBody = document.querySelector('#recent-payments tbody');
-        if (data.recent_payments.length === 0) {
-          recentBody.innerHTML = '<tr><td colspan="7">No payments found</td></tr>';
-        } else {
-          recentBody.innerHTML = data.recent_payments.map(p => {
-            const perChild = p.children_served ? (p.amount / p.children_served).toFixed(0) : '-';
-            return `
-              <tr>
-                <td class="clickable" onclick="showProviderDetail(${p.provider_id})">${p.provider_name}</td>
-                <td>${formatMonth(p.fiscal_year, p.fiscal_month)}</td>
-                <td class="amount">${formatCurrency(p.amount)}</td>
-                <td>${p.children_served || '-'}</td>
-                <td class="amount">${perChild !== '-' ? '$' + perChild : '-'}</td>
-                <td>${p.capacity || '-'}</td>
-                <td>${p.children_served > p.capacity ? '<span class="capacity-warning">OVER CAPACITY</span>' : '<span style="color:var(--success)">OK</span>'}</td>
-              </tr>
-            `;
-          }).join('');
-        }
-      } catch (err) {
-        console.error('Error loading dashboard:', err);
-        document.getElementById('stats-grid').innerHTML = '<div class="error">Error loading data</div>';
-      }
+        const fed = await federalRes.json();
+        renderFederalFunding(fed);
+        document.getElementById('stats-grid').innerHTML = `<div class="stat-card"><h3>Total Providers</h3><div class="value">${data.total_providers}</div></div><div class="stat-card"><h3>CCDF Payments</h3><div class="value">${formatCurrency(data.total_payments)}</div></div><div class="stat-card"><h3>Fraud Flags</h3><div class="value">${data.fraud_indicators_count}</div></div>`;
+        document.querySelector('#top-providers tbody').innerHTML = data.top_providers.map(p => `<tr><td class="clickable" onclick="showProviderDetail(${p.id})">${p.name}</td><td>${p.city}</td><td>${p.provider_type}</td><td>${p.capacity}</td><td>${capacityStatus(p.max_children, p.capacity)}</td><td class="amount">${formatCurrency(p.total_payments)}</td><td>${p.fraud_count}</td></tr>`).join('');
+      } catch (e) { console.error(e); }
     }
-    
-    function renderCharts(report, data) {
-      const colors = ['#1a365d', '#2c5282', '#3182ce', '#4299e1', '#63b3ed', '#90cdf4', '#805ad5', '#d53f8c'];
-      
-      // City chart
-      const cityCtx = document.getElementById('cityChart').getContext('2d');
-      if (cityChart) cityChart.destroy();
-      cityChart = new Chart(cityCtx, {
-        type: 'doughnut',
-        data: {
-          labels: report.by_city.slice(0, 6).map(r => r.city || 'Unknown'),
-          datasets: [{
-            data: report.by_city.slice(0, 6).map(r => r.total_payments || 0),
-            backgroundColor: colors
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: { 
-            legend: { position: 'right' },
-            tooltip: {
-              callbacks: {
-                label: function(context) {
-                  return context.label + ': $' + context.parsed.toLocaleString();
-                }
-              }
-            }
-          }
-        }
-      });
-      
-      // Fraud chart
-      const fraudCtx = document.getElementById('fraudChart').getContext('2d');
-      if (fraudChart) fraudChart.destroy();
-      fraudChart = new Chart(fraudCtx, {
-        type: 'bar',
-        data: {
-          labels: report.fraud_by_type.map(r => r.indicator_type.replace(/_/g, ' ')),
-          datasets: [{
-            label: 'Count',
-            data: report.fraud_by_type.map(r => r.count),
-            backgroundColor: '#e53e3e'
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: { legend: { display: false } },
-          scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
-        }
-      });
+
+    function renderFederalFunding(fed) {
+      document.getElementById('federal-funding-content').innerHTML = `<div>Total: ${formatCurrency(fed.totalFederalAmount)} | Awards: ${fed.totalAwards}</div>`;
     }
-    
-    // Providers
+
+    async function refreshFederalData() {
+      await fetch(`${API_BASE}/federal/awards?refresh=true`, { headers: getAuthHeaders() });
+      loadDashboard();
+    }
+
     async function loadProviders() {
-      const tbody = document.querySelector('#providers-table tbody');
-      tbody.innerHTML = '<tr><td colspan="8" class="loading">Loading...</td></tr>';
-      
-      const filter = document.getElementById('provider-filter').value;
-      const query = document.getElementById('provider-search').value;
-      
-      let url = `${API_BASE}/providers?`;
-      if (filter === 'immigrant') url += 'immigrant_owned=true&';
-      if (query) url += `q=${encodeURIComponent(query)}&`;
-      
-      try {
-        const res = await fetch(url);
-        const providers = await res.json();
-        
-        if (providers.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="8">No providers found</td></tr>';
-          return;
-        }
-        
-        tbody.innerHTML = providers.map(p => `
-          <tr>
-            <td class="clickable" onclick="showProviderDetail(${p.id})">
-              ${p.name}
-              ${p.is_immigrant_owned ? '<span class="badge badge-immigrant" style="margin-left:0.5rem">Immigrant</span>' : ''}
-            </td>
-            <td>${p.owner_name || '-'}</td>
-            <td>${p.city || '-'}</td>
-            <td>${p.provider_type || '-'}</td>
-            <td>${p.capacity || '-'}</td>
-            <td style="font-size:0.75rem">${p.language_services || '-'}</td>
-            <td class="amount">${formatCurrency(p.total_payments)}</td>
-            <td>${p.fraud_count > 0 ? `${severityBadge('medium')} ${p.fraud_count}` : '-'}</td>
-          </tr>
-        `).join('');
-      } catch (err) {
-        console.error('Error:', err);
-        tbody.innerHTML = '<tr><td colspan="8" class="error">Error loading providers</td></tr>';
-      }
+      const res = await fetch(`${API_BASE}/providers`);
+      const data = await res.json();
+      document.querySelector('#providers-table tbody').innerHTML = data.map(p => `<tr><td class="clickable" onclick="showProviderDetail(${p.id})">${p.name}</td><td>${p.owner_name}</td><td>${p.city}</td><td>${p.provider_type}</td><td>${p.capacity}</td><td>${p.language_services}</td><td>${formatCurrency(p.total_payments)}</td><td>${p.fraud_count}</td></tr>`).join('');
     }
-    
-    function searchProviders() { loadProviders(); }
-    
-    // Payments
-    async function loadPayments() {
-      const tbody = document.querySelector('#payments-table tbody');
-      tbody.innerHTML = '<tr><td colspan="8" class="loading">Loading...</td></tr>';
-      
-      const year = document.getElementById('payment-year-filter').value;
-      
-      let url = `${API_BASE}/payments?limit=100`;
-      if (year) url += `&fiscal_year=${year}`;
-      
-      try {
-        const res = await fetch(url);
-        const payments = await res.json();
-        
-        if (payments.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="8">No payments found</td></tr>';
-          return;
-        }
-        
-        tbody.innerHTML = payments.map(p => {
-          const perChild = p.children_served ? (p.amount / p.children_served).toFixed(0) : '-';
-          return `
-            <tr>
-              <td class="clickable" onclick="showProviderDetail(${p.provider_id})">${p.provider_name}</td>
-              <td>${p.is_immigrant_owned ? '<span class="badge badge-immigrant">Yes</span>' : 'No'}</td>
-              <td>${p.fiscal_year || '-'}</td>
-              <td>${formatMonth(p.fiscal_year, p.fiscal_month)}</td>
-              <td class="amount">${formatCurrency(p.amount)}</td>
-              <td>${p.children_served || '-'}</td>
-              <td class="amount">${perChild !== '-' ? '$' + perChild : '-'}</td>
-              <td><span class="badge badge-ccdf">${p.funding_source || 'CCDF'}</span></td>
-            </tr>
-          `;
-        }).join('');
-      } catch (err) {
-        console.error('Error:', err);
-        tbody.innerHTML = '<tr><td colspan="8" class="error">Error loading payments</td></tr>';
-      }
-    }
-    
-    // Fraud Indicators
-    async function loadFraudIndicators() {
-      const tbody = document.querySelector('#fraud-table tbody');
-      tbody.innerHTML = '<tr><td colspan="6" class="loading">Loading...</td></tr>';
-      
-      const severity = document.getElementById('fraud-severity-filter').value;
-      const status = document.getElementById('fraud-status-filter').value;
-      
-      let url = `${API_BASE}/fraud-indicators?`;
-      if (severity) url += `severity=${severity}&`;
-      if (status) url += `status=${status}&`;
-      
-      try {
-        const res = await fetch(url);
-        const indicators = await res.json();
-        
-        if (indicators.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="6">No fraud indicators found</td></tr>';
-          return;
-        }
-        
-        tbody.innerHTML = indicators.map(i => `
-          <tr>
-            <td>${severityBadge(i.severity)}</td>
-            <td>${i.indicator_type.replace(/_/g, ' ')}</td>
-            <td style="max-width:300px">${i.description}</td>
-            <td style="max-width:200px;font-size:0.75rem;color:var(--text-light)">${i.evidence || '-'}</td>
-            <td class="clickable" onclick="showProviderDetail(${i.provider_id})">${i.provider_name || '-'}</td>
-            <td>${statusBadge(i.status)}</td>
-          </tr>
-        `).join('');
-      } catch (err) {
-        console.error('Error:', err);
-        tbody.innerHTML = '<tr><td colspan="6" class="error">Error</td></tr>';
-      }
-    }
-    
-    // Data Sources
-    async function loadDataSources() {
-      const container = document.getElementById('data-sources-list');
-      try {
-        const res = await fetch(`${API_BASE}/data-sources`);
-        const sources = await res.json();
-        
-        container.innerHTML = sources.map(s => `
-          <div class="source-card">
-            <h4>${s.name}</h4>
-            <a href="${s.url}" target="_blank">${s.url}</a>
-            <p style="margin-top:0.5rem;font-size:0.8rem;color:var(--text-light);">${s.notes || ''}</p>
-          </div>
-        `).join('');
-      } catch (err) {
-        container.innerHTML = '<div class="error">Error loading data sources</div>';
-      }
-    }
-    
-    // Provider Detail Modal
+
     async function showProviderDetail(id) {
-      if (!id) return;
       openModal('provider-modal');
-      document.getElementById('provider-modal-body').innerHTML = '<div class="loading">Loading...</div>';
-      
-      try {
-        const res = await fetch(`${API_BASE}/providers/${id}`);
-        const p = await res.json();
-        
-        // Calculate totals
-        const totalPayments = p.payments?.reduce((sum, pay) => sum + (pay.amount || 0), 0) || 0;
-        const maxChildren = Math.max(...(p.payments?.map(pay => pay.children_served || 0) || [0]));
-        
-        document.getElementById('provider-modal-title').textContent = p.name;
-        document.getElementById('provider-modal-body').innerHTML = `
-          ${p.is_immigrant_owned ? '<div class="alert-box"><h4>Immigrant-Owned Provider</h4><p style="font-size:0.85rem">' + (p.owner_background || 'Background information available for review.') + '</p></div>' : ''}
-          
-          <div class="detail-grid">
-            <div class="detail-item"><label>Owner</label><div class="value">${p.owner_name || '-'}</div></div>
-            <div class="detail-item"><label>Address</label><div class="value">${p.address || '-'}</div></div>
-            <div class="detail-item"><label>City</label><div class="value">${p.city || '-'}, ${p.state || 'NH'}</div></div>
-            <div class="detail-item"><label>License Type</label><div class="value">${p.license_type || '-'}</div></div>
-            <div class="detail-item"><label>Licensed Capacity</label><div class="value">${p.capacity || '-'}</div></div>
-            <div class="detail-item"><label>Max Children Served</label><div class="value">${maxChildren > (p.capacity || 0) ? '<span class="capacity-warning">' + maxChildren + ' (OVER CAPACITY)</span>' : maxChildren}</div></div>
-            <div class="detail-item"><label>Provider Type</label><div class="value">${p.provider_type || '-'}</div></div>
-            <div class="detail-item"><label>Languages</label><div class="value">${p.language_services || '-'}</div></div>
-            <div class="detail-item"><label>Total CCDF Payments</label><div class="value amount">${formatCurrency(totalPayments)}</div></div>
-            <div class="detail-item"><label>CCDF Participant</label><div class="value">${p.accepts_ccdf ? 'Yes' : 'No'}</div></div>
-          </div>
-          
-          ${p.notes ? `<div class="detail-item" style="margin-bottom:1rem"><label>Notes</label><div class="value">${p.notes}</div></div>` : ''}
-          
-          ${p.fraud_indicators && p.fraud_indicators.length > 0 ? `
-            <div class="alert-box danger">
-              <h4>Fraud Indicators (${p.fraud_indicators.length})</h4>
-            </div>
-            <table style="margin-bottom:1.5rem">
-              <thead><tr><th>Severity</th><th>Type</th><th>Description</th><th>Status</th></tr></thead>
-              <tbody>
-                ${p.fraud_indicators.map(f => `
-                  <tr>
-                    <td>${severityBadge(f.severity)}</td>
-                    <td>${f.indicator_type.replace(/_/g, ' ')}</td>
-                    <td>${f.description}</td>
-                    <td>${statusBadge(f.status)}</td>
-                  </tr>
-                `).join('')}
-              </tbody>
-            </table>
-          ` : ''}
-          
-          ${p.payments && p.payments.length > 0 ? `
-            <h4 style="margin-bottom:0.75rem">Payment History (${p.payments.length} payments)</h4>
-            <table>
-              <thead><tr><th>Period</th><th>Amount</th><th>Children</th><th>$/Child</th><th>Type</th></tr></thead>
-              <tbody>
-                ${p.payments.map(pay => {
-                  const perChild = pay.children_served ? (pay.amount / pay.children_served).toFixed(0) : '-';
-                  return `
-                    <tr>
-                      <td>${formatMonth(pay.fiscal_year, pay.fiscal_month)}</td>
-                      <td class="amount">${formatCurrency(pay.amount)}</td>
-                      <td>${pay.children_served > (p.capacity || 999) ? '<span class="capacity-warning">' + pay.children_served + '</span>' : pay.children_served || '-'}</td>
-                      <td class="amount">${perChild !== '-' ? '$' + perChild : '-'}</td>
-                      <td>${pay.payment_type || '-'}</td>
-                    </tr>
-                  `;
-                }).join('')}
-              </tbody>
-            </table>
-          ` : '<p>No payment records found</p>'}
-        `;
-      } catch (err) {
-        document.getElementById('provider-modal-body').innerHTML = '<div class="error">Error loading provider details</div>';
-      }
+      const res = await fetch(`${API_BASE}/providers/${id}`);
+      const p = await res.json();
+      document.getElementById('provider-modal-title').textContent = p.name;
+      document.getElementById('provider-modal-body').innerHTML = `<div class="detail-grid"><div><label>City</label>${p.city}</div><div><label>Payments</label>${formatCurrency(p.total_payments)}</div></div>`;
     }
-    
-    // Export Data
-    async function exportData(type) {
-      let data = [];
-      let filename = '';
-      
-      try {
-        if (type === 'providers') {
-          const res = await fetch(`${API_BASE}/providers`);
-          data = await res.json();
-          filename = 'nh-childcare-providers.csv';
-        } else if (type === 'payments') {
-          const res = await fetch(`${API_BASE}/payments?limit=1000`);
-          data = await res.json();
-          filename = 'nh-ccdf-payments.csv';
-        } else if (type === 'fraud') {
-          const res = await fetch(`${API_BASE}/fraud-indicators`);
-          data = await res.json();
-          filename = 'nh-fraud-indicators.csv';
-        }
-        
-        if (data.length === 0) {
-          alert('No data to export');
-          return;
-        }
-        
-        // Convert to CSV
-        const headers = Object.keys(data[0]);
-        const csv = [
-          headers.join(','),
-          ...data.map(row => headers.map(h => {
-            let val = row[h];
-            if (val === null || val === undefined) val = '';
-            if (typeof val === 'string' && (val.includes(',') || val.includes('"') || val.includes('\n'))) {
-              val = '"' + val.replace(/"/g, '""') + '"';
-            }
-            return val;
-          }).join(','))
-        ].join('\n');
-        
-        // Download
-        const blob = new Blob([csv], { type: 'text/csv' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-      } catch (err) {
-        console.error('Export error:', err);
-        alert('Error exporting data');
-      }
+
+    async function loadIngestionHistory() {
+      const res = await fetch(`${API_BASE}/ingestion/runs`, { headers: getAuthHeaders() });
+      const data = await res.json();
+      document.getElementById('ingestion-history-body').innerHTML = (data.runs || []).map(r => `<tr><td>${r.source}</td><td>${r.status}</td><td>${r.records_processed}</td><td>${r.records_imported}</td><td>${new Date(r.started_at).toLocaleString()}</td><td><button onclick='alert(JSON.stringify(${JSON.stringify(r.details)}))'>View</button></td></tr>`).join('');
     }
-    
-    // ============================================
-    // Import & Analysis Tools (Legacy - kept for compatibility)
-    // ============================================
-    
-    // TransparentNH Scraper (legacy, non-job-tracked version)
-    async function scrapeTransparentNH() {
-      const fiscalYear = document.getElementById('fiscal-year-select').value;
-      const resultDiv = document.getElementById('import-result');
-      
-      if (!fiscalYear) {
-        alert('Please select a fiscal year');
-        return;
-      }
-      
-      resultDiv.style.display = 'block';
-      resultDiv.innerHTML = `<div class="loading">Downloading and processing FY${fiscalYear} data from TransparentNH... This may take a minute.</div>`;
-      
-      try {
-        const response = await fetch(`${API_BASE}/scraper/transparent-nh`, {
-          method: 'POST',
-          headers: getAuthHeaders(),
-          body: JSON.stringify({ fiscalYear: parseInt(fiscalYear) }),
-        });
-        
-        const result = await response.json();
-        
-        if (result.success) {
-          resultDiv.innerHTML = `
-            <div class="alert-box" style="background:#c6f6d5;border-color:#38a169;">
-              <h4 style="color:#276749;">FY${result.fiscalYear} Scrape Complete</h4>
-              <ul style="margin-left:1.5rem;font-size:0.85rem;">
-                <li>Total records in file: ${result.totalRecords.toLocaleString()}</li>
-                <li>Childcare-related records: ${result.childcareRecords.toLocaleString()}</li>
-                <li>New records imported: ${result.importedRecords.toLocaleString()}</li>
-                <li>Total amount: ${formatCurrency(result.totalAmount)}</li>
-              </ul>
-            </div>
-          `;
-        } else {
-          resultDiv.innerHTML = `
-            <div class="alert-box danger">
-              <h4>Scrape Failed</h4>
-              <p>${result.error}</p>
-            </div>
-          `;
-        }
-      } catch (err) {
-        console.error('TransparentNH scrape error:', err);
-        resultDiv.innerHTML = `<div class="alert-box danger"><h4>Error</h4><p>${err.message}</p></div>`;
-      }
-    }
-    
-    async function scrapeRecentYears() {
-      const resultDiv = document.getElementById('transparent-nh-result');
-      
-      resultDiv.style.display = 'block';
-      resultDiv.innerHTML = '<div class="loading">Downloading recent fiscal years from TransparentNH... This may take several minutes.</div>';
-      
-      try {
-        const response = await fetch(`${API_BASE}/scraper/transparent-nh/recent`, {
-          method: 'POST',
-          headers: getAuthHeaders(),
-        });
-        
-        const result = await response.json();
-        
-        const yearResults = result.results.map(r => 
-          `<li>FY${r.fiscalYear}: ${r.success ? r.importedRecords + ' imported' : 'Failed - ' + r.error}</li>`
-        ).join('');
-        
-        resultDiv.innerHTML = `
-          <div class="alert-box" style="background:#c6f6d5;border-color:#38a169;">
-            <h4 style="color:#276749;">Recent Years Scrape Complete</h4>
-            <ul style="margin-left:1.5rem;font-size:0.85rem;">
-              <li>Years scraped: ${result.years_scraped}</li>
-              <li>Total records found: ${result.total_records.toLocaleString()}</li>
-              <li>Childcare records: ${result.childcare_records.toLocaleString()}</li>
-              <li>New records imported: ${result.imported_records.toLocaleString()}</li>
-              <li>Total amount: ${formatCurrency(result.total_amount)}</li>
-            </ul>
-            <p style="margin-top:0.5rem;font-weight:600;">By Year:</p>
-            <ul style="margin-left:1.5rem;font-size:0.85rem;">
-              ${yearResults}
-            </ul>
-          </div>
-        `;
-      } catch (err) {
-        console.error('TransparentNH scrape error:', err);
-        resultDiv.innerHTML = `<div class="alert-box danger"><h4>Error</h4><p>${err.message}</p></div>`;
-      }
-    }
-    
-    // CSV Import
-    async function importCSV() {
-      const fileInput = document.getElementById('csv-file');
-      const filterChildcare = document.getElementById('filter-childcare').checked;
-      const createProviders = document.getElementById('create-providers').checked;
-      const resultDiv = document.getElementById('import-result');
-      
-      if (!fileInput.files || !fileInput.files[0]) {
-        alert('Please select a CSV file');
-        return;
-      }
-      
-      resultDiv.style.display = 'block';
-      resultDiv.innerHTML = '<div class="loading">Importing CSV...</div>';
-      
-      try {
-        const file = fileInput.files[0];
-        const csvContent = await file.text();
-        
-        const response = await fetch(`${API_BASE}/import/csv?filter_childcare=${filterChildcare}&create_providers=${createProviders}`, {
-          method: 'POST',
-          headers: getAuthHeaders(),
-          body: JSON.stringify({ csv: csvContent }),
-        });
-        
-        const result = await response.json();
-        
-        if (result.success) {
-          resultDiv.innerHTML = `
-            <div class="alert-box" style="background:#c6f6d5;border-color:#38a169;">
-              <h4 style="color:#276749;">Import Successful</h4>
-              <ul style="margin-left:1.5rem;font-size:0.85rem;">
-                <li>Total rows: ${result.totalRows}</li>
-                <li>Imported: ${result.importedRows}</li>
-                <li>Skipped: ${result.skippedRows}</li>
-                <li>Matched providers: ${result.matchedProviders}</li>
-                <li>New expenditures: ${result.newExpenditures}</li>
-              </ul>
-              ${result.errors.length > 0 ? '<p style="margin-top:0.5rem;color:var(--warning);">Warnings: ' + result.errors.slice(0,3).join(', ') + '</p>' : ''}
-            </div>
-          `;
-        } else {
-          resultDiv.innerHTML = `
-            <div class="alert-box danger">
-              <h4>Import Failed</h4>
-              <p>${result.errors.join(', ')}</p>
-            </div>
-          `;
-        }
-      } catch (err) {
-        console.error('Import error:', err);
-        resultDiv.innerHTML = `<div class="alert-box danger"><h4>Error</h4><p>${err.message}</p></div>`;
-      }
-    }
-    
-    // Scrape Contracts
-    async function scrapeContracts() {
-      const keyword = document.getElementById('scrape-keyword').value || 'daycare';
-      const resultDiv = document.getElementById('scrape-result');
-      
-      resultDiv.style.display = 'block';
-      resultDiv.innerHTML = `<div class="loading">Searching NH DAS for "${keyword}"...</div>`;
-      
-      try {
-        const response = await fetch(`${API_BASE}/scraper/search`, {
-          method: 'POST',
-          headers: getAuthHeaders(),
-          body: JSON.stringify({ keyword }),
-        });
-        
-        const result = await response.json();
-        
-        if (result.success) {
-          resultDiv.innerHTML = `
-            <div class="alert-box" style="background:#c6f6d5;border-color:#38a169;">
-              <h4 style="color:#276749;">Scrape Complete</h4>
-              <ul style="margin-left:1.5rem;font-size:0.85rem;">
-                <li>Found: ${result.contracts.length} contracts</li>
-                <li>Saved: ${result.saved} new contracts</li>
-              </ul>
-            </div>
-          `;
-        } else {
-          resultDiv.innerHTML = `
-            <div class="alert-box danger">
-              <h4>Scrape Failed</h4>
-              <p>${result.error}</p>
-            </div>
-          `;
-        }
-      } catch (err) {
-        console.error('Scrape error:', err);
-        resultDiv.innerHTML = `<div class="alert-box danger"><h4>Error</h4><p>${err.message}</p></div>`;
-      }
-    }
-    
-    async function scrapeAllChildcare() {
-      const resultDiv = document.getElementById('scrape-result');
-      
-      resultDiv.style.display = 'block';
-      resultDiv.innerHTML = '<div class="loading">Running full childcare scrape (this may take a minute)...</div>';
-      
-      try {
-        const response = await fetch(`${API_BASE}/scraper/full`, {
-          method: 'POST',
-          headers: getAuthHeaders(),
-        });
-        
-        const result = await response.json();
-        
-        resultDiv.innerHTML = `
-          <div class="alert-box" style="background:#c6f6d5;border-color:#38a169;">
-            <h4 style="color:#276749;">Full Scrape Complete</h4>
-            <ul style="margin-left:1.5rem;font-size:0.85rem;">
-              <li>Keywords searched: ${result.keywords_searched}</li>
-              <li>Total found: ${result.total} contracts</li>
-              <li>Saved: ${result.saved} new contracts</li>
-              ${result.errors.length > 0 ? '<li style="color:var(--warning);">Errors: ' + result.errors.length + '</li>' : ''}
-            </ul>
-          </div>
-        `;
-      } catch (err) {
-        console.error('Scrape error:', err);
-        resultDiv.innerHTML = `<div class="alert-box danger"><h4>Error</h4><p>${err.message}</p></div>`;
-      }
-    }
-    
-    // Fraud Analysis
-    async function runFraudAnalysis() {
-      const resultDiv = document.getElementById('analysis-result');
-      
-      resultDiv.style.display = 'block';
-      resultDiv.innerHTML = '<div class="loading">Running full fraud analysis...</div>';
-      
-      try {
-        const response = await fetch(`${API_BASE}/analyze/fraud`, {
-          method: 'POST',
-          headers: getAuthHeaders(),
-        });
-        
-        const result = await response.json();
-        
-        resultDiv.innerHTML = `
-          <div class="alert-box" style="background:#c6f6d5;border-color:#38a169;">
-            <h4 style="color:#276749;">Analysis Complete</h4>
-            <ul style="margin-left:1.5rem;font-size:0.85rem;">
-              <li>Structuring flags: ${result.structuring.length}</li>
-              <li>Duplicate flags: ${result.duplicates.length}</li>
-              <li>New fraud indicators saved: ${result.savedIndicators}</li>
-            </ul>
-          </div>
-        `;
-        
-        // Show structuring results
-        if (result.structuring.length > 0) {
-          showStructuringResults(result.structuring);
-        }
-        
-        // Show duplicate results
-        if (result.duplicates.length > 0) {
-          showDuplicateResults(result.duplicates);
-        }
-        
-        // Show vendor concentration
-        if (result.vendorConcentration.length > 0) {
-          showConcentrationResults(result.vendorConcentration);
-        }
-        
-      } catch (err) {
-        console.error('Analysis error:', err);
-        resultDiv.innerHTML = `<div class="alert-box danger"><h4>Error</h4><p>${err.message}</p></div>`;
-      }
-    }
-    
-    async function detectStructuring() {
-      const resultDiv = document.getElementById('analysis-result');
-      
-      resultDiv.style.display = 'block';
-      resultDiv.innerHTML = '<div class="loading">Detecting structuring patterns...</div>';
-      
-      try {
-        const response = await fetch(`${API_BASE}/analyze/structuring`);
-        const result = await response.json();
-        
-        resultDiv.innerHTML = `
-          <div class="alert-box">
-            <h4>Structuring Detection</h4>
-            <p>Found ${result.count} potential structuring patterns (threshold: $${result.threshold.toLocaleString()})</p>
-          </div>
-        `;
-        
-        if (result.flags.length > 0) {
-          showStructuringResults(result.flags);
-        }
-      } catch (err) {
-        console.error('Error:', err);
-        resultDiv.innerHTML = `<div class="alert-box danger"><h4>Error</h4><p>${err.message}</p></div>`;
-      }
-    }
-    
-    async function detectDuplicates() {
-      const resultDiv = document.getElementById('analysis-result');
-      
-      resultDiv.style.display = 'block';
-      resultDiv.innerHTML = '<div class="loading">Finding duplicate transactions...</div>';
-      
-      try {
-        const response = await fetch(`${API_BASE}/analyze/duplicates`);
-        const result = await response.json();
-        
-        resultDiv.innerHTML = `
-          <div class="alert-box">
-            <h4>Duplicate Detection</h4>
-            <p>Found ${result.count} duplicate transaction groups</p>
-          </div>
-        `;
-        
-        if (result.duplicates.length > 0) {
-          showDuplicateResults(result.duplicates);
-        }
-      } catch (err) {
-        console.error('Error:', err);
-        resultDiv.innerHTML = `<div class="alert-box danger"><h4>Error</h4><p>${err.message}</p></div>`;
-      }
-    }
-    
-    function showStructuringResults(flags) {
-      const card = document.getElementById('structuring-card');
-      const tbody = document.querySelector('#structuring-table tbody');
-      
-      card.style.display = 'block';
-      tbody.innerHTML = flags.map(f => `
-        <tr>
-          <td><span class="badge badge-${f.type === 'split_payments' ? 'high' : 'medium'}">${f.type.replace(/_/g, ' ')}</span></td>
-          <td>${f.vendor}</td>
-          <td class="amount">${formatCurrency(f.total_amount)}</td>
-          <td>${f.transaction_count}</td>
-          <td style="font-size:0.75rem">${f.details}</td>
-          <td>${severityBadge(f.severity)}</td>
-        </tr>
-      `).join('');
-    }
-    
-    function showDuplicateResults(duplicates) {
-      const card = document.getElementById('duplicates-card');
-      const tbody = document.querySelector('#duplicates-table tbody');
-      
-      card.style.display = 'block';
-      tbody.innerHTML = duplicates.map(d => `
-        <tr>
-          <td>${d.vendor}</td>
-          <td class="amount">${formatCurrency(d.amount)}</td>
-          <td>${d.date}</td>
-          <td><span class="badge badge-high">${d.count}x</span></td>
-          <td style="font-size:0.75rem">${d.transaction_ids.join(', ')}</td>
-        </tr>
-      `).join('');
-    }
-    
-    function showConcentrationResults(vendors) {
-      const card = document.getElementById('concentration-card');
-      const tbody = document.querySelector('#concentration-table tbody');
-      
-      card.style.display = 'block';
-      tbody.innerHTML = vendors.map(v => `
-        <tr>
-          <td class="clickable" onclick="showProviderDetail(${v.vendor_id})">${v.vendor}</td>
-          <td>${v.is_immigrant_owned ? '<span class="badge badge-immigrant">Yes</span>' : 'No'}</td>
-          <td class="amount">${formatCurrency(v.total_amount)}</td>
-          <td>${v.transaction_count}</td>
-          <td class="amount">${formatCurrency(v.average_amount)}</td>
-        </tr>
-      `).join('');
-    }
-    
-    // ============================================
-    // TRIGGER.DEV JOB MANAGEMENT
-    // ============================================
-    
-    let activeTriggerPollers = {};
-    
-    // Load tools view - fetch fiscal years and job history
-    async function loadToolsView() {
-      try {
-        // Load fiscal years
-        const yearsResponse = await fetch(`${API_BASE}/scraper/transparent-nh/years`);
-        const yearsData = await yearsResponse.json();
-        
-        const select = document.getElementById('fiscal-year-select');
-        select.innerHTML = yearsData.years.map(year => 
-          `<option value="${year}">FY ${year}</option>`
-        ).join('');
-        
-        // Load job history from Trigger.dev
-        await loadJobHistory();
-        
-        // Check for active jobs
-        await refreshJobStatus();
-      } catch (err) {
-        console.error('Error loading tools view:', err);
-      }
-    }
-    
-    // Load job history table from Trigger.dev runs
-    async function loadJobHistory() {
-      try {
-        const response = await fetch(`${API_BASE}/trigger/runs?limit=20`);
-        const data = await response.json();
-        
-        const tbody = document.getElementById('job-history-body');
-        
-        if (!data.runs || data.runs.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-light);">No scraper jobs yet</td></tr>';
-          return;
-        }
-        
-        tbody.innerHTML = data.runs.map(run => {
-          const duration = run.finishedAt 
-            ? formatDuration(new Date(run.createdAt), new Date(run.finishedAt))
-            : 'Running...';
-          
-          const statusClass = mapTriggerStatus(run.status);
-          
-          return `
-            <tr>
-              <td><strong>${formatTaskName(run.taskIdentifier)}</strong></td>
-              <td><span class="progress-status ${statusClass}">${run.status}</span></td>
-              <td>
-                <div class="progress-bar-bg" style="width:80px;height:6px;">
-                  <div class="progress-bar-fill ${statusClass}" style="width:${getProgressFromStatus(run.status)}%;"></div>
-                </div>
-              </td>
-              <td>-</td>
-              <td>-</td>
-              <td>${formatTime(run.createdAt)}</td>
-              <td>${duration}</td>
-            </tr>
-          `;
-        }).join('');
-      } catch (err) {
-        console.error('Error loading job history:', err);
-        document.getElementById('job-history-body').innerHTML = 
-          '<tr><td colspan="7" style="color:var(--danger);">Error loading jobs</td></tr>';
-      }
-    }
-    
-    // Map Trigger.dev status to CSS class
-    function mapTriggerStatus(status) {
-      const map = {
-        'PENDING': 'pending',
-        'QUEUED': 'pending',
-        'EXECUTING': 'running',
-        'REATTEMPTING': 'running',
-        'COMPLETED': 'completed',
-        'SYSTEM_FAILURE': 'failed',
-        'INTERRUPTED': 'failed',
-        'CRASHED': 'failed',
-        'FAILED': 'failed',
-        'CANCELED': 'failed',
-      };
-      return map[status] || 'pending';
-    }
-    
-    // Get progress percentage from status
-    function getProgressFromStatus(status) {
-      const map = {
-        'PENDING': 0,
-        'QUEUED': 10,
-        'EXECUTING': 50,
-        'REATTEMPTING': 30,
-        'COMPLETED': 100,
-        'SYSTEM_FAILURE': 100,
-        'INTERRUPTED': 100,
-        'CRASHED': 100,
-        'FAILED': 100,
-        'CANCELED': 100,
-      };
-      return map[status] || 0;
-    }
-    
-    // Refresh active job status
+
     async function refreshJobStatus() {
       try {
-        const response = await fetch(`${API_BASE}/trigger/runs?limit=10`);
-        const data = await response.json();
+        const res = await fetch(`${API_BASE}/trigger/runs`, { headers: getAuthHeaders() });
+        if (!res.ok) return;
+        const data = await res.json();
+        const active = (data.runs || []).filter(r => ['EXECUTING','PENDING', 'QUEUED', 'REATTEMPTING'].includes(r.status));
         
-        const runningJobs = (data.runs || []).filter(r => 
-          r.status === 'PENDING' || r.status === 'QUEUED' || r.status === 'EXECUTING' || r.status === 'REATTEMPTING'
-        );
+        // Update active jobs panel
         const panel = document.getElementById('active-jobs-panel');
-        const list = document.getElementById('active-jobs-list');
-        
-        if (runningJobs.length === 0) {
-          panel.style.display = 'none';
-          return;
+        if (panel) {
+          panel.style.display = active.length ? 'block' : 'none';
+          document.getElementById('active-jobs-list').innerHTML = active.map(r => `<div>${r.taskIdentifier}: ${r.status}</div>`).join('');
         }
+
+        // Disable/Enable trigger buttons
+        const triggerButtons = document.querySelectorAll('.scraper-card button, .card-header button[onclick^="start"]');
+        const isAnyActive = active.length > 0;
         
-        panel.style.display = 'block';
-        list.innerHTML = runningJobs.map(run => `
-          <div class="active-job-item">
-            <div class="job-name">${formatTaskName(run.taskIdentifier)}</div>
-            <div class="job-progress">
-              <div class="progress-bar-bg">
-                <div class="progress-bar-fill" style="width:${getProgressFromStatus(run.status)}%;"></div>
-              </div>
-            </div>
-            <div class="job-step">${run.status} (${getProgressFromStatus(run.status)}%)</div>
-          </div>
-        `).join('');
-        
-        // Start polling for running jobs
-        runningJobs.forEach(run => {
-          if (!activeTriggerPollers[run.id]) {
-            startTriggerPolling(run.id);
+        triggerButtons.forEach(btn => {
+          btn.disabled = isAnyActive;
+          if (isAnyActive) {
+            btn.style.opacity = '0.5';
+            btn.style.cursor = 'not-allowed';
+          } else {
+            btn.style.opacity = '1';
+            btn.style.cursor = 'pointer';
           }
         });
-      } catch (err) {
-        console.error('Error refreshing job status:', err);
-      }
-    }
-    
-    // Poll a specific Trigger.dev run for updates
-    function startTriggerPolling(runId) {
-      if (activeTriggerPollers[runId]) return;
-      
-      activeTriggerPollers[runId] = setInterval(async () => {
-        try {
-          const response = await fetch(`${API_BASE}/trigger/runs/${runId}`);
-          const run = await response.json();
-          
-          // Update the active jobs panel
-          await refreshJobStatus();
-          
-          // If job is complete, stop polling and refresh history
-          const isComplete = ['COMPLETED', 'FAILED', 'SYSTEM_FAILURE', 'INTERRUPTED', 'CRASHED', 'CANCELED'].includes(run.status);
-          if (isComplete) {
-            clearInterval(activeTriggerPollers[runId]);
-            delete activeTriggerPollers[runId];
-            await loadJobHistory();
-            
-            // Show completion notification
-            showTriggerNotification(run);
-          }
-        } catch (err) {
-          console.error('Error polling run:', err);
-          clearInterval(activeTriggerPollers[runId]);
-          delete activeTriggerPollers[runId];
+
+        // Polling if active
+        if (isAnyActive) {
+          setTimeout(refreshJobStatus, 3000);
         }
-      }, 3000); // Poll every 3 seconds
+      } catch (e) { console.error('Job status refresh failed:', e); }
     }
-    
-    // Show Trigger.dev job completion notification
-    function showTriggerNotification(run) {
-      const resultDiv = document.getElementById('import-result');
-      resultDiv.style.display = 'block';
-      
-      if (run.status === 'COMPLETED') {
-        const output = run.output || {};
-        
-        // Check if blocked by bot protection
-        if (output.blocked) {
-          resultDiv.innerHTML = `
-            <div class="alert-box" style="background:#fed7d7;border-color:#c53030;">
-              <h4 style="color:#c53030;">${formatTaskName(run.taskIdentifier)} - Blocked</h4>
-              <p style="font-size:0.85rem;">NH.gov is blocking automated requests due to bot protection.</p>
-              <p style="font-size:0.85rem;margin-top:0.5rem;"><strong>Alternative data sources:</strong></p>
-              <ul style="margin-left:1.5rem;font-size:0.85rem;">
-                <li><strong>USAspending.gov</strong> - Federal CCDF awards (use the button below)</li>
-                <li><strong>ACF CCDF Statistics</strong> - Official HHS data (use the button below)</li>
-                <li><strong>Manual Upload</strong> - Download CSV from TransparentNH website manually</li>
-              </ul>
-            </div>
-          `;
-          return;
-        }
-        
-        resultDiv.innerHTML = `
-          <div class="alert-box" style="background:#c6f6d5;border-color:#38a169;">
-            <h4 style="color:#276749;">${formatTaskName(run.taskIdentifier)} Complete</h4>
-            <ul style="margin-left:1.5rem;font-size:0.85rem;">
-              ${output.totalRecords !== undefined ? `<li>Total records: ${output.totalRecords || 0}</li>` : ''}
-              ${output.importedRecords !== undefined ? `<li>Imported: ${output.importedRecords || 0}</li>` : ''}
-              ${output.childcareRecords !== undefined ? `<li>Childcare records: ${output.childcareRecords || 0}</li>` : ''}
-              ${output.totalAwards !== undefined ? `<li>Awards found: ${output.totalAwards || 0}</li>` : ''}
-              ${output.totalAmount !== undefined ? `<li>Total amount: $${(output.totalAmount || 0).toLocaleString()}</li>` : ''}
-              ${output.contractsFound !== undefined ? `<li>Contracts found: ${output.contractsFound || 0}</li>` : ''}
-              ${output.contractsSaved !== undefined ? `<li>Contracts saved: ${output.contractsSaved || 0}</li>` : ''}
-              ${output.providersFound !== undefined ? `<li>Providers found: ${output.providersFound || 0}</li>` : ''}
-              ${output.structuringFlags !== undefined ? `<li>Structuring flags: ${output.structuringFlags || 0}</li>` : ''}
-              ${output.duplicateFlags !== undefined ? `<li>Duplicate flags: ${output.duplicateFlags || 0}</li>` : ''}
-              ${output.savedIndicators !== undefined ? `<li>Fraud indicators saved: ${output.savedIndicators || 0}</li>` : ''}
-            </ul>
-          </div>
-        `;
-      } else {
-        const errorMsg = run.error?.message || run.error || 'Unknown error';
-        const isBlocked = errorMsg.includes('403') || errorMsg.includes('404') || errorMsg.includes('blocking');
-        
-        if (isBlocked && run.taskIdentifier === 'scrape-transparent-nh') {
-          resultDiv.innerHTML = `
-            <div class="alert-box danger">
-              <h4>${formatTaskName(run.taskIdentifier)} - Access Blocked</h4>
-              <p style="font-size:0.85rem;">NH.gov is blocking automated requests. Please use alternative data sources:</p>
-              <ul style="margin-left:1.5rem;font-size:0.85rem;margin-top:0.5rem;">
-                <li><strong>USAspending.gov</strong> - Click "Fetch Awards" button</li>
-                <li><strong>ACF CCDF Statistics</strong> - Click "Fetch Stats" button</li>
-                <li><strong>Manual Upload</strong> - Download from TransparentNH website and upload CSV</li>
-              </ul>
-            </div>
-          `;
-        } else {
-          resultDiv.innerHTML = `
-            <div class="alert-box danger">
-              <h4>${formatTaskName(run.taskIdentifier)} Failed</h4>
-              <p>${errorMsg}</p>
-            </div>
-          `;
-        }
-      }
+
+    async function startTransparentNHCrawlIngest(dryRun) {
+      await fetch(`${API_BASE}/trigger/transparent-nh`, { method: 'POST', headers: getAuthHeaders(), body: JSON.stringify({ crawlIngest: true, dryRun }) });
+      refreshJobStatus();
     }
-    
-    // Start TransparentNH scraper with Trigger.dev
-    async function startTransparentNHScraper() {
-      const fiscalYear = document.getElementById('fiscal-year-select').value;
-      
-      if (!fiscalYear) {
-        alert('Please select a fiscal year');
-        return;
-      }
-      
-      try {
-        const response = await fetch(`${API_BASE}/trigger/transparent-nh`, {
-          method: 'POST',
-          headers: getAuthHeaders(),
-          body: JSON.stringify({ fiscalYear: parseInt(fiscalYear) }),
-        });
-        
-        const result = await response.json();
-        
-        if (result.runId) {
-          startTriggerPolling(result.runId);
-          await refreshJobStatus();
-          
-          // Show immediate feedback
-          const resultDiv = document.getElementById('import-result');
-          resultDiv.style.display = 'block';
-          resultDiv.innerHTML = `
-            <div class="alert-box">
-              <h4>TransparentNH Scraper Started</h4>
-              <p style="font-size:0.85rem;">Run ID: ${result.runId}. Monitoring progress...</p>
-            </div>
-          `;
-        } else {
-          throw new Error(result.error || 'Failed to start task');
-        }
-      } catch (err) {
-        console.error('Error starting scraper:', err);
-        alert('Error starting scraper: ' + err.message);
-      }
-    }
-    
-    // Start TransparentNH recent years scraper with Trigger.dev
-    async function startTransparentNHRecent() {
-      try {
-        const response = await fetch(`${API_BASE}/trigger/transparent-nh`, {
-          method: 'POST',
-          headers: getAuthHeaders(),
-          body: JSON.stringify({ recentYears: true }),
-        });
-        
-        const result = await response.json();
-        
-        if (result.runId) {
-          startTriggerPolling(result.runId);
-          await refreshJobStatus();
-          
-          // Show immediate feedback
-          const resultDiv = document.getElementById('import-result');
-          resultDiv.style.display = 'block';
-          resultDiv.innerHTML = `
-            <div class="alert-box">
-              <h4>TransparentNH Recent Years Scraper Started</h4>
-              <p style="font-size:0.85rem;">Run ID: ${result.runId}. Scraping last 3 fiscal years...</p>
-            </div>
-          `;
-        } else {
-          throw new Error(result.error || 'Failed to start task');
-        }
-      } catch (err) {
-        console.error('Error starting scraper:', err);
-        alert('Error starting scraper: ' + err.message);
-      }
-    }
-    
-    // Start contracts scraper with Trigger.dev
-    async function startContractsScraper() {
-      const keyword = document.getElementById('scrape-keyword').value || 'daycare';
-      
-      try {
-        const response = await fetch(`${API_BASE}/trigger/contracts`, {
-          method: 'POST',
-          headers: getAuthHeaders(),
-          body: JSON.stringify({ keyword }),
-        });
-        
-        const result = await response.json();
-        
-        if (result.runId) {
-          startTriggerPolling(result.runId);
-          await refreshJobStatus();
-          
-          // Show immediate feedback
-          const resultDiv = document.getElementById('import-result');
-          resultDiv.style.display = 'block';
-          resultDiv.innerHTML = `
-            <div class="alert-box">
-              <h4>NH DAS Contracts Scraper Started</h4>
-              <p style="font-size:0.85rem;">Run ID: ${result.runId}. Searching for "${keyword}"...</p>
-            </div>
-          `;
-        } else {
-          throw new Error(result.error || 'Failed to start task');
-        }
-      } catch (err) {
-        console.error('Error starting scraper:', err);
-        alert('Error starting scraper: ' + err.message);
-      }
-    }
-    
-    // Start full contracts scraper with Trigger.dev
-    async function startFullContractsScraper() {
-      try {
-        const response = await fetch(`${API_BASE}/trigger/contracts`, {
-          method: 'POST',
-          headers: getAuthHeaders(),
-          body: JSON.stringify({ fullScrape: true }),
-        });
-        
-        const result = await response.json();
-        
-        if (result.runId) {
-          startTriggerPolling(result.runId);
-          await refreshJobStatus();
-          
-          // Show immediate feedback
-          const resultDiv = document.getElementById('import-result');
-          resultDiv.style.display = 'block';
-          resultDiv.innerHTML = `
-            <div class="alert-box">
-              <h4>NH DAS Full Contracts Scraper Started</h4>
-              <p style="font-size:0.85rem;">Run ID: ${result.runId}. Searching all childcare keywords...</p>
-            </div>
-          `;
-        } else {
-          throw new Error(result.error || 'Failed to start task');
-        }
-      } catch (err) {
-        console.error('Error starting scraper:', err);
-        alert('Error starting scraper: ' + err.message);
-      }
-    }
-    
-    // Start fraud analysis with Trigger.dev
-    async function startFraudAnalysis() {
-      try {
-        const response = await fetch(`${API_BASE}/trigger/fraud-analysis`, {
-          method: 'POST',
-          headers: getAuthHeaders(),
-          body: JSON.stringify({ analysisType: 'full' }),
-        });
-        
-        const result = await response.json();
-        
-        if (result.runId) {
-          startTriggerPolling(result.runId);
-          await refreshJobStatus();
-          
-          // Show immediate feedback
-          const resultDiv = document.getElementById('import-result');
-          resultDiv.style.display = 'block';
-          resultDiv.innerHTML = `
-            <div class="alert-box">
-              <h4>Fraud Analysis Started</h4>
-              <p style="font-size:0.85rem;">Run ID: ${result.runId}. Running full fraud detection...</p>
-            </div>
-          `;
-        } else {
-          throw new Error(result.error || 'Failed to start task');
-        }
-      } catch (err) {
-        console.error('Error starting analysis:', err);
-        alert('Error starting analysis: ' + err.message);
-      }
-    }
-    
-    // Start USAspending.gov scraper with Trigger.dev
+
     async function startUSASpendingScraper() {
-      const yearSelect = document.getElementById('usaspending-year-select');
-      const fiscalYear = yearSelect.value || null;
-      
+      await fetch(`${API_BASE}/trigger/usaspending`, { method: 'POST', headers: getAuthHeaders(), body: JSON.stringify({}) });
+      refreshJobStatus();
+    }
+
+    async function startFraudAnalysis() {
+      await fetch(`${API_BASE}/trigger/fraud-analysis`, { method: 'POST', headers: getAuthHeaders(), body: JSON.stringify({}) });
+      refreshJobStatus();
+    }
+
+    async function confirmInitDb() { if (prompt('Type RESET:')==='RESET') await fetch(`${API_BASE}/admin/init-db`, { method: 'POST', headers: getAuthHeaders() }); }
+    async function seedSampleData() { await fetch(`${API_BASE}/admin/seed-sample-data`, { method: 'POST', headers: getAuthHeaders() }); }
+    async function viewDbInfo() {
+      const url = `${API_BASE}/admin/db-info`;
+      console.log(`Checking connection to: ${url}`);
+      const el = document.getElementById('db-info-result');
+      if (!el) return console.error('db-info-result element not found');
+      el.innerHTML = 'Connecting...';
       try {
-        const response = await fetch(`${API_BASE}/trigger/usaspending`, {
-          method: 'POST',
-          headers: getAuthHeaders(),
-          body: JSON.stringify({ 
-            fiscalYear: fiscalYear ? parseInt(fiscalYear) : undefined,
-            includeSummary: true 
-          }),
-        });
+        const headers = getAuthHeaders();
+        console.log('Using headers:', Object.keys(headers).join(', '));
         
-        const result = await response.json();
+        const res = await fetch(url, { headers });
+        console.log('Response status:', res.status);
+        console.log('Response content-type:', res.headers.get('content-type'));
         
-        if (result.runId) {
-          startTriggerPolling(result.runId);
-          await refreshJobStatus();
-          
-          // Show immediate feedback
-          const resultDiv = document.getElementById('import-result');
-          resultDiv.style.display = 'block';
-          resultDiv.innerHTML = `
-            <div class="alert-box">
-              <h4>USAspending.gov Scraper Started</h4>
-              <p style="font-size:0.85rem;">Run ID: ${result.runId}. Fetching federal CCDF awards${fiscalYear ? ` for FY${fiscalYear}` : ''}...</p>
-            </div>
-          `;
+        const contentType = res.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || data.message || `HTTP ${res.status}`);
+          el.innerHTML = `<pre style="font-size:0.6rem;background:#eee;padding:0.5rem;border-radius:4px;overflow:auto;max-height:200px;">${JSON.stringify(data,null,2)}</pre>`;
         } else {
-          throw new Error(result.error || 'Failed to start task');
+          const text = await res.text();
+          console.error('Non-JSON response (first 500 chars):', text.slice(0, 500));
+          throw new Error(`Server returned HTML instead of JSON (HTTP ${res.status}). This usually means the API route was not found and the server returned a 404 page. Check the console for more info.`);
         }
-      } catch (err) {
-        console.error('Error starting USAspending scraper:', err);
-        alert('Error starting scraper: ' + err.message);
+      } catch (e) {
+        console.error('Connection check error:', e);
+        el.innerHTML = `<div style="color:var(--danger);font-size:0.75rem;margin-top:0.5rem;padding:0.5rem;background:#fff5f5;border:1px solid #feb2b2;border-radius:4px;">${e.message}</div>`;
       }
     }
-    
-    // Start ACF CCDF scraper with Trigger.dev
-    async function startACFScraper() {
-      const yearSelect = document.getElementById('acf-year-select');
-      const fiscalYear = yearSelect.value || '2022';
-      
-      try {
-        const response = await fetch(`${API_BASE}/trigger/acf-ccdf`, {
-          method: 'POST',
-          headers: getAuthHeaders(),
-          body: JSON.stringify({ fiscalYear: parseInt(fiscalYear) }),
-        });
-        
-        const result = await response.json();
-        
-        if (result.runId) {
-          startTriggerPolling(result.runId);
-          await refreshJobStatus();
-          
-          // Show immediate feedback
-          const resultDiv = document.getElementById('import-result');
-          resultDiv.style.display = 'block';
-          resultDiv.innerHTML = `
-            <div class="alert-box">
-              <h4>ACF CCDF Scraper Started</h4>
-              <p style="font-size:0.85rem;">Run ID: ${result.runId}. Fetching FY${fiscalYear} CCDF statistics...</p>
-            </div>
-          `;
-        } else {
-          throw new Error(result.error || 'Failed to start task');
-        }
-      } catch (err) {
-        console.error('Error starting ACF scraper:', err);
-        alert('Error starting scraper: ' + err.message);
-      }
-    }
-    
-    // Start ACF CCDF scraper for all years
-    async function startACFAllYears() {
-      try {
-        const response = await fetch(`${API_BASE}/trigger/acf-ccdf`, {
-          method: 'POST',
-          headers: getAuthHeaders(),
-          body: JSON.stringify({ allYears: true }),
-        });
-        
-        const result = await response.json();
-        
-        if (result.runId) {
-          startTriggerPolling(result.runId);
-          await refreshJobStatus();
-          
-          // Show immediate feedback
-          const resultDiv = document.getElementById('import-result');
-          resultDiv.style.display = 'block';
-          resultDiv.innerHTML = `
-            <div class="alert-box">
-              <h4>ACF CCDF All Years Scraper Started</h4>
-              <p style="font-size:0.85rem;">Run ID: ${result.runId}. Fetching all available CCDF statistics...</p>
-            </div>
-          `;
-        } else {
-          throw new Error(result.error || 'Failed to start task');
-        }
-      } catch (err) {
-        console.error('Error starting ACF scraper:', err);
-        alert('Error starting scraper: ' + err.message);
-      }
-    }
-    
-    // Helper: Format task name for display
-    function formatTaskName(taskId) {
-      const names = {
-        'scrape-transparent-nh': 'TransparentNH Expenditures',
-        'scrape-nh-das-contracts': 'NH DAS Contracts',
-        'scrape-nh-licensing': 'NH Licensing',
-        'run-fraud-analysis': 'Fraud Analysis',
-        'scrape-usaspending': 'USAspending.gov',
-        'scrape-acf-ccdf': 'ACF CCDF Statistics',
-      };
-      return names[taskId] || taskId;
-    }
-    
-    // Helper: Format scraper name for display (legacy compatibility)
-    function formatScraperName(name) {
-      return formatTaskName(name);
-    }
-    
-    // Helper: Format duration
-    function formatDuration(start, end) {
-      const diff = (end - start) / 1000; // seconds
-      if (diff < 60) return `${Math.round(diff)}s`;
-      if (diff < 3600) return `${Math.round(diff / 60)}m`;
-      return `${Math.round(diff / 3600)}h`;
-    }
-    
-    // Helper: Format time for display
-    function formatTime(isoString) {
-      if (!isoString) return '-';
-      const date = new Date(isoString);
-      return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-    }
-    
-    // Initial load
-    loadDashboard();
-    loadApiKeyUI();
   </script>
 </body>
 </html>

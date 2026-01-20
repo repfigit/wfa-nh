@@ -154,7 +154,7 @@ app.get('/api/fraud-indicators', asyncHandler(async (req, res) => {
   res.json(indicators);
 }));
 
-app.patch('/api/fraud-indicators/:id', asyncHandler(async (req, res) => {
+app.patch('/api/fraud-indicators/:id', requireAuth, asyncHandler(async (req, res) => {
   await ensureInitialized();
   const { status, notes } = req.body;
   const id = parseInt(req.params.id as string);
@@ -439,7 +439,7 @@ app.post('/api/analyze/fraud', requireAuth, asyncHandler(async (req, res) => {
   res.json({ success: true, ...result });
 }));
 
-app.get('/api/analyze/structuring', asyncHandler(async (req, res) => {
+app.get('/api/analyze/structuring', requireAuth, asyncHandler(async (req, res) => {
   await ensureInitialized();
   const threshold = req.query.threshold ? parseInt(req.query.threshold as string) : 10000;
   const windowDays = req.query.window_days ? parseInt(req.query.window_days as string) : 7;
@@ -454,13 +454,13 @@ app.get('/api/analyze/structuring', asyncHandler(async (req, res) => {
   });
 }));
 
-app.get('/api/analyze/duplicates', asyncHandler(async (req, res) => {
+app.get('/api/analyze/duplicates', requireAuth, asyncHandler(async (req, res) => {
   await ensureInitialized();
   const duplicates = await detectDuplicates();
   res.json({ duplicates, count: duplicates.length });
 }));
 
-app.get('/api/analyze/concentration', asyncHandler(async (req, res) => {
+app.get('/api/analyze/concentration', requireAuth, asyncHandler(async (req, res) => {
   await ensureInitialized();
   const topN = req.query.top_n ? parseInt(req.query.top_n as string) : 10;
   const concentration = await analyzeVendorConcentration(topN);
@@ -804,17 +804,25 @@ app.get('/api/admin/db-info', requireAuth, asyncHandler(async (req, res) => {
 app.post('/api/trigger/transparent-nh', requireAuth, asyncHandler(async (req, res) => {
   const fiscalYear = req.body.fiscalYear || req.body.fiscal_year;
   const recentYears = req.body.recentYears || false;
+  const crawl = req.body.crawl || false;
+  const crawlIngest = req.body.crawlIngest || false;
+  const dryRun = req.body.dryRun || false;
 
   try {
     const handle = await tasks.trigger<typeof scrapeTransparentNH>('scrape-transparent-nh', {
       fiscalYear: fiscalYear ? parseInt(fiscalYear) : undefined,
       recentYears,
+      crawl,
+      crawlIngest,
+      dryRun,
     });
 
     res.json({
       success: true,
       runId: handle.id,
-      message: 'TransparentNH scraper task triggered',
+      message: crawlIngest
+        ? 'TransparentNH crawl+ingest task triggered'
+        : (crawl ? 'TransparentNH crawl task triggered' : 'TransparentNH scraper task triggered'),
     });
   } catch (error: any) {
     console.error('Failed to trigger TransparentNH task:', error);
@@ -975,7 +983,7 @@ app.get('/api/scraper/acf-ccdf/stats/:year', asyncHandler(async (req, res) => {
 }));
 
 // Get Trigger.dev run status
-app.get('/api/trigger/runs/:runId', asyncHandler(async (req, res) => {
+app.get('/api/trigger/runs/:runId', requireAuth, asyncHandler(async (req, res) => {
   const runId = req.params.runId as string;
 
   try {
@@ -999,7 +1007,7 @@ app.get('/api/trigger/runs/:runId', asyncHandler(async (req, res) => {
 }));
 
 // List recent Trigger.dev runs
-app.get('/api/trigger/runs', asyncHandler(async (req, res) => {
+app.get('/api/trigger/runs', requireAuth, asyncHandler(async (req, res) => {
   const limit = req.query.limit ? parseInt(req.query.limit as string) : 20;
   const taskId = req.query.taskId as string | undefined;
 
@@ -1029,7 +1037,7 @@ app.get('/api/trigger/runs', asyncHandler(async (req, res) => {
 // ============================================
 
 // Get ingestion run history from database
-app.get('/api/ingestion/runs', asyncHandler(async (req, res) => {
+app.get('/api/ingestion/runs', requireAuth, asyncHandler(async (req, res) => {
   await ensureInitialized();
   const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
   const source = req.query.source as string | undefined;
@@ -1072,7 +1080,7 @@ app.get('/api/ingestion/runs', asyncHandler(async (req, res) => {
 }));
 
 // Get scheduled task overview
-app.get('/api/ingestion/schedule', asyncHandler(async (req, res) => {
+app.get('/api/ingestion/schedule', requireAuth, asyncHandler(async (req, res) => {
   const scheduleOverview = {
     tasks: [
       { id: 'daily-usaspending-ingest', source: 'USAspending.gov', schedule: 'Daily 6 AM UTC', description: 'Federal CCDF awards' },
@@ -1108,6 +1116,25 @@ app.get('/api/federal/awards', asyncHandler(async (req, res) => {
   const refresh = req.query.refresh === 'true';
   const fiscalYear = req.query.fiscal_year ? parseInt(req.query.fiscal_year as string) : undefined;
   const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+
+  if (refresh) {
+    const expectedKey = process.env.ADMIN_API_KEY;
+    if (expectedKey) {
+      const apiKey = req.headers['x-api-key'] as string;
+      if (!apiKey) {
+        return res.status(401).json({
+          error: 'Unauthorized',
+          message: 'Missing x-api-key header'
+        });
+      }
+      if (apiKey !== expectedKey) {
+        return res.status(401).json({
+          error: 'Unauthorized',
+          message: 'Invalid API key'
+        });
+      }
+    }
+  }
   
   // Check if we have recent data in the database
   let awards = await query(`
@@ -1282,6 +1309,16 @@ app.get('/api/search', asyncHandler(async (req, res) => {
     fraud_indicators: fraudIndicators,
   });
 }));
+
+// Catch-all 404 handler for /api/*
+app.use('/api', (req, res) => {
+  res.status(404).json({
+    error: 'Not Found',
+    message: `API route not found: ${req.method} ${req.originalUrl}`,
+    url: req.url,
+    path: req.path
+  });
+});
 
 // Error handling middleware
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {

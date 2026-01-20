@@ -9,14 +9,16 @@
 import { initializeDb, saveDb } from '../db/database.js';
 import { query, execute } from '../db/db-adapter.js';
 import { existsSync, mkdirSync, writeFileSync, readFileSync } from 'fs';
+import { createHash } from 'crypto';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import * as cheerio from 'cheerio';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Use /tmp on Vercel (read-only filesystem), local data dir otherwise
 const DATA_DIR = process.env.VERCEL ? '/tmp/downloads' : path.join(__dirname, '../../data/downloads');
 
-// TransparentNH fiscal year download URLs
+// TransparentNH fiscal year download URLs (fallback if crawl yields nothing)
 const FISCAL_YEAR_URLS: Record<number, string> = {
   2026: 'https://www.nh.gov/transparentnh/where-the-money-goes/documents/fy2026.zip',
   2025: 'https://www.nh.gov/transparentnh/where-the-money-goes/documents/fy2025.zip',
@@ -26,6 +28,15 @@ const FISCAL_YEAR_URLS: Record<number, string> = {
   2021: 'https://www.nh.gov/transparentnh/where-the-money-goes/documents/fy2021.zip',
   2020: 'https://www.nh.gov/transparentnh/where-the-money-goes/documents/fy2020.zip',
 };
+
+const TRANSPARENT_NH_ROOTS = [
+  'https://www.nh.gov/transparentnh/',
+  'https://business.nh.gov/ExpenditureTransparency/',
+];
+
+const CRAWL_MAX_PAGES = 200;
+const CRAWL_MAX_DEPTH = 2;
+const CRAWL_DELAY_MS = 400;
 
 // Keywords to identify childcare-related expenditures
 const CHILDCARE_KEYWORDS = [
@@ -80,6 +91,36 @@ interface ScrapeResult {
   error?: string;
 }
 
+interface CrawlResult {
+  success: boolean;
+  pagesVisited: number;
+  pagesDiscovered: number;
+  downloadLinks: Array<{
+    url: string;
+    text?: string;
+    sourcePage: string;
+  }>;
+  errors: string[];
+}
+
+interface CrawlDownloadResult {
+  url: string;
+  savedPath?: string;
+  contentType?: string;
+  status?: number;
+  error?: string;
+}
+
+interface IngestionSummary {
+  totalRecords: number;
+  childcareRecords: number;
+  importedRecords: number;
+  totalAmount: number;
+  filesProcessed: number;
+  filesWithErrors: number;
+  errors: string[];
+}
+
 /**
  * Generate realistic browser headers to avoid bot detection
  */
@@ -116,22 +157,382 @@ function randomSleep(minMs: number, maxMs: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, delay));
 }
 
+function normalizeUrl(input: string, base?: string): string | null {
+  try {
+    const url = base ? new URL(input, base) : new URL(input);
+    url.hash = '';
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+function sameSite(url: string, root: string): boolean {
+  try {
+    return new URL(url).hostname === new URL(root).hostname;
+  } catch {
+    return false;
+  }
+}
+
+const NON_DOWNLOAD_EXTENSIONS = new Set([
+  'html', 'htm', 'php', 'aspx', 'asp', 'jsp', 'cfm'
+]);
+
+function getUrlExtension(url: string): string | undefined {
+  try {
+    const { pathname } = new URL(url);
+    const match = pathname.toLowerCase().match(/\.([a-z0-9]{1,8})$/);
+    return match ? match[1] : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function looksLikeDownload(url: string): boolean {
+  const ext = getUrlExtension(url);
+  if (!ext) return false;
+  return !NON_DOWNLOAD_EXTENSIONS.has(ext);
+}
+
+function isZipUrl(url: string): boolean {
+  const ext = getUrlExtension(url);
+  return ext === 'zip';
+}
+
+function isAllowedDomain(url: string): boolean {
+  try {
+    const host = new URL(url).hostname;
+    return host === 'nh.gov' || host.endsWith('.nh.gov') || host.endsWith('.state.nh.us');
+  } catch {
+    return false;
+  }
+}
+
+function isCrawlableLink(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+function inferFiscalYear(input: string): number | undefined {
+  const fyMatch = input.match(/(?:fy|fiscal[-_\s]?year)[^0-9]*(20\d{2})/i);
+  if (fyMatch) {
+    return parseInt(fyMatch[1], 10);
+  }
+  const yearMatch = input.match(/\b(20\d{2})\b/);
+  if (yearMatch) {
+    return parseInt(yearMatch[1], 10);
+  }
+  return undefined;
+}
+
+function getMostCommonFiscalYear(records: TransparentNHRecord[]): number | undefined {
+  const counts = new Map<number, number>();
+  for (const record of records) {
+    if (!record.fiscalYear) continue;
+    const year = record.fiscalYear;
+    counts.set(year, (counts.get(year) || 0) + 1);
+  }
+
+  let bestYear: number | undefined;
+  let bestCount = 0;
+  for (const [year, count] of counts.entries()) {
+    if (count > bestCount || (count === bestCount && (bestYear || 0) < year)) {
+      bestYear = year;
+      bestCount = count;
+    }
+  }
+
+  return bestYear;
+}
+
+function resolveFiscalYear(records: TransparentNHRecord[], sourceUrl?: string, filePath?: string): number | undefined {
+  return getMostCommonFiscalYear(records) ||
+    (sourceUrl ? inferFiscalYear(sourceUrl) : undefined) ||
+    (filePath ? inferFiscalYear(path.basename(filePath)) : undefined);
+}
+
+function isHtmlContentType(contentType?: string | null): boolean {
+  return !!contentType && contentType.toLowerCase().includes('text/html');
+}
+
+function makeFileName(url: string): string {
+  const parsed = new URL(url);
+  const baseName = path.basename(parsed.pathname) || 'download';
+  const hash = createHash('sha1').update(url).digest('hex').slice(0, 8);
+  return `${hash}-${baseName}`;
+}
+
+async function fetchPage(url: string): Promise<{ ok: boolean; status: number; html?: string; contentType?: string; error?: string }> {
+  try {
+    const response = await fetch(url, {
+      headers: getBrowserHeaders(),
+      redirect: 'follow',
+    });
+
+    const contentType = response.headers.get('content-type') || undefined;
+    if (!response.ok) {
+      return { ok: false, status: response.status, contentType, error: `HTTP ${response.status}` };
+    }
+
+    if (!isHtmlContentType(contentType)) {
+      return { ok: true, status: response.status, contentType };
+    }
+
+    const html = await response.text();
+    return { ok: true, status: response.status, contentType, html };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return { ok: false, status: 0, error: message };
+  }
+}
+
+function extractLinks(html: string, baseUrl: string): string[] {
+  const $ = cheerio.load(html);
+  const links: string[] = [];
+
+  $('a[href], link[href], script[src]').each((_, el) => {
+    const attr = $(el).attr('href') || $(el).attr('src');
+    if (!attr) return;
+    const normalized = normalizeUrl(attr, baseUrl);
+    if (normalized) {
+      links.push(normalized);
+    }
+  });
+
+  return links;
+}
+
+async function crawlTransparentNH(
+  roots: string[],
+  maxPages: number,
+  maxDepth: number
+): Promise<CrawlResult> {
+  const queue: Array<{ url: string; depth: number; source?: string }> = [];
+  const visited = new Set<string>();
+  const discovered = new Set<string>();
+  const downloadLinks: CrawlResult['downloadLinks'] = [];
+  const errors: string[] = [];
+
+  for (const root of roots) {
+    const normalized = normalizeUrl(root);
+    if (normalized) {
+      queue.push({ url: normalized, depth: 0 });
+      discovered.add(normalized);
+    }
+  }
+
+  while (queue.length > 0 && visited.size < maxPages) {
+    const current = queue.shift();
+    if (!current) break;
+
+    const { url, depth } = current;
+    if (visited.has(url)) continue;
+    visited.add(url);
+
+    const page = await fetchPage(url);
+    if (!page.ok) {
+      errors.push(`${url}: ${page.error || page.status}`);
+      continue;
+    }
+
+    if (page.contentType && !isHtmlContentType(page.contentType)) {
+      if (looksLikeDownload(url)) {
+        downloadLinks.push({ url, sourcePage: current.source || url });
+      }
+      continue;
+    }
+
+    if (!page.html) continue;
+
+    const links = extractLinks(page.html, url);
+    for (const link of links) {
+      if (!isCrawlableLink(link)) continue;
+      if (!isAllowedDomain(link)) continue;
+
+      if (!discovered.has(link)) {
+        discovered.add(link);
+      }
+
+      if (looksLikeDownload(link)) {
+        downloadLinks.push({ url: link, sourcePage: url });
+        continue;
+      }
+
+      if (depth + 1 <= maxDepth) {
+        if (!visited.has(link)) {
+          queue.push({ url: link, depth: depth + 1, source: url });
+        }
+      }
+    }
+
+    await new Promise(resolve => setTimeout(resolve, CRAWL_DELAY_MS));
+  }
+
+  return {
+    success: errors.length === 0,
+    pagesVisited: visited.size,
+    pagesDiscovered: discovered.size,
+    downloadLinks: downloadLinks.filter((value, index, self) => self.findIndex(v => v.url === value.url) === index),
+    errors,
+  };
+}
+
+async function downloadDiscoveredFiles(
+  links: CrawlResult['downloadLinks'],
+  dataDir: string
+): Promise<CrawlDownloadResult[]> {
+  const results: CrawlDownloadResult[] = [];
+
+  for (const link of links) {
+    const url = link.url;
+    const fileName = makeFileName(url);
+    const destPath = path.join(dataDir, fileName);
+
+    try {
+      if (!existsSync(dataDir)) {
+        mkdirSync(dataDir, { recursive: true });
+      }
+
+      if (existsSync(destPath)) {
+        results.push({ url, savedPath: destPath, status: 200 });
+        continue;
+      }
+
+      const response = await fetch(url, {
+        headers: getBrowserHeaders(link.sourcePage),
+        redirect: 'follow',
+      });
+
+      const contentType = response.headers.get('content-type') || undefined;
+      if (!response.ok) {
+        results.push({ url, status: response.status, contentType, error: `HTTP ${response.status}` });
+        continue;
+      }
+
+      const buffer = await response.arrayBuffer();
+      writeFileSync(destPath, Buffer.from(buffer));
+      if (isZipUrl(url)) {
+        const zipName = path.basename(new URL(url).pathname) || fileName;
+        const zipTarget = path.join(dataDir, zipName);
+        if (!existsSync(zipTarget)) {
+          writeFileSync(zipTarget, Buffer.from(buffer));
+        }
+      }
+      results.push({ url, savedPath: destPath, status: response.status, contentType });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      results.push({ url, error: message });
+    }
+
+    await new Promise(resolve => setTimeout(resolve, CRAWL_DELAY_MS));
+  }
+
+  return results;
+}
+
+async function logIngestionRun(summary: {
+  source: string;
+  status: 'started' | 'completed' | 'failed';
+  startedAt: string;
+  completedAt?: string;
+  recordsProcessed: number;
+  recordsImported: number;
+  details?: Record<string, unknown>;
+  errorMessage?: string;
+}): Promise<void> {
+  await initializeDb();
+  const detailsJson = summary.details ? JSON.stringify(summary.details) : null;
+  await execute(
+    `INSERT INTO ingestion_runs (
+      source, status, started_at, completed_at,
+      records_processed, records_imported, details, error_message
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    , [
+      summary.source,
+      summary.status,
+      summary.startedAt,
+      summary.completedAt || null,
+      summary.recordsProcessed,
+      summary.recordsImported,
+      detailsJson,
+      summary.errorMessage || null,
+    ]
+  );
+}
+
+async function ingestZipFile(zipPath: string, sourceUrl: string | undefined, dryRun: boolean): Promise<{
+  fiscalYear?: number;
+  totalRecords: number;
+  childcareRecords: number;
+  importedRecords: number;
+  totalAmount: number;
+  error?: string;
+}> {
+  try {
+    const csvContent = await extractZip(zipPath);
+    if (!csvContent) {
+      return { totalRecords: 0, childcareRecords: 0, importedRecords: 0, totalAmount: 0, error: 'Failed to extract CSV' };
+    }
+
+    const allRecords = parseCSV(csvContent);
+    const fiscalYear = resolveFiscalYear(allRecords, sourceUrl, zipPath);
+
+    const childcareRecords = allRecords.filter(r =>
+      isChildcareRelated(r) || (isDHHS(r) && r.amount && r.amount > 1000)
+    );
+
+    const totalAmount = childcareRecords.reduce((sum, r) => sum + (r.amount || 0), 0);
+
+    const importedRecords = fiscalYear && !dryRun
+      ? await saveRecords(childcareRecords, fiscalYear)
+      : 0;
+
+    return {
+      fiscalYear,
+      totalRecords: allRecords.length,
+      childcareRecords: childcareRecords.length,
+      importedRecords,
+      totalAmount,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return { totalRecords: 0, childcareRecords: 0, importedRecords: 0, totalAmount: 0, error: message };
+  }
+}
+
+function groupLinksByFiscalYear(links: CrawlResult['downloadLinks']): Record<number, string> {
+  const map: Record<number, string> = {};
+  for (const link of links) {
+    const match = link.url.match(/fy(\d{4})/i);
+    const inferred = match ? parseInt(match[1], 10) : inferFiscalYear(link.url);
+    if (inferred) {
+      map[inferred] = link.url;
+    }
+  }
+  return map;
+}
+
 /**
  * Download a file from URL with retry logic and browser emulation
  */
 async function downloadFile(url: string, destPath: string, maxRetries = 3): Promise<boolean> {
   const baseUrl = 'https://www.nh.gov/transparentnh/where-the-money-goes/';
   const downloadPageUrl = 'https://www.nh.gov/transparentnh/where-the-money-goes/fiscal-yr-downloads.htm';
-  
+
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       console.log(`Download attempt ${attempt}/${maxRetries} for ${url}...`);
-      
+
       // Add random delay between attempts (2-5 seconds)
       if (attempt > 1) {
         await randomSleep(2000, 5000);
       }
-      
+
       // First, try to "visit" the download page to establish a session
       if (attempt === 1) {
         console.log('Establishing session by visiting download page...');
@@ -147,15 +548,15 @@ async function downloadFile(url: string, destPath: string, maxRetries = 3): Prom
           console.log('Could not access download page, continuing anyway...');
         }
       }
-      
+
       // Now try to download the file with referer header
       const response = await fetch(url, {
         headers: getBrowserHeaders(downloadPageUrl),
         redirect: 'follow',
       });
-      
+
       console.log(`Response status: ${response.status}`);
-      
+
       if (response.status === 403) {
         console.log('Access forbidden (403) - site may be blocking automated requests');
         if (attempt < maxRetries) {
@@ -165,12 +566,12 @@ async function downloadFile(url: string, destPath: string, maxRetries = 3): Prom
         }
         throw new Error(`HTTP 403: Access Forbidden - site is blocking automated downloads`);
       }
-      
+
       if (response.status === 404) {
         // Check if this is a real 404 or a bot-block masquerading as 404
         const contentType = response.headers.get('content-type') || '';
         const contentLength = response.headers.get('content-length');
-        
+
         if (contentType.includes('text/html') && contentLength && parseInt(contentLength) < 1000) {
           console.log('Received small HTML response for ZIP file - likely bot protection');
           if (attempt < maxRetries) {
@@ -180,11 +581,11 @@ async function downloadFile(url: string, destPath: string, maxRetries = 3): Prom
         }
         throw new Error(`HTTP 404: File not found - ${url}`);
       }
-      
+
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
-      
+
       // Verify we got a ZIP file (check content-type or first bytes)
       const contentType = response.headers.get('content-type') || '';
       if (contentType.includes('text/html')) {
@@ -195,9 +596,9 @@ async function downloadFile(url: string, destPath: string, maxRetries = 3): Prom
         }
         throw new Error('Received HTML response instead of ZIP file');
       }
-      
+
       const buffer = await response.arrayBuffer();
-      
+
       // Verify it's a valid ZIP (starts with PK magic bytes)
       const bytes = new Uint8Array(buffer);
       if (bytes.length < 4 || bytes[0] !== 0x50 || bytes[1] !== 0x4B) {
@@ -208,13 +609,13 @@ async function downloadFile(url: string, destPath: string, maxRetries = 3): Prom
         }
         throw new Error('Downloaded file is not a valid ZIP archive');
       }
-      
+
       const fs = await import('fs');
       fs.writeFileSync(destPath, Buffer.from(buffer));
-      
+
       console.log(`Successfully downloaded to ${destPath} (${buffer.byteLength} bytes)`);
       return true;
-      
+
     } catch (error) {
       console.error(`Attempt ${attempt} failed:`, error);
       if (attempt === maxRetries) {
@@ -223,7 +624,7 @@ async function downloadFile(url: string, destPath: string, maxRetries = 3): Prom
       }
     }
   }
-  
+
   return false;
 }
 
@@ -541,21 +942,28 @@ export async function scrapeFiscalYear(fiscalYear: number): Promise<ScrapeResult
     importedRecords: 0,
     totalAmount: 0,
   };
-  
+
   try {
-    const url = FISCAL_YEAR_URLS[fiscalYear];
+    let url = FISCAL_YEAR_URLS[fiscalYear];
+
+    if (!url) {
+      const crawl = await crawlTransparentNH(TRANSPARENT_NH_ROOTS, CRAWL_MAX_PAGES, CRAWL_MAX_DEPTH);
+      const byYear = groupLinksByFiscalYear(crawl.downloadLinks);
+      url = byYear[fiscalYear];
+    }
+
     if (!url) {
       result.error = `No download URL available for FY${fiscalYear}`;
       return result;
     }
-    
+
     // Ensure download directory exists
     if (!existsSync(DATA_DIR)) {
       mkdirSync(DATA_DIR, { recursive: true });
     }
-    
+
     const zipPath = path.join(DATA_DIR, `fy${fiscalYear}.zip`);
-    
+
     // Download if not already cached
     if (!existsSync(zipPath)) {
       try {
@@ -568,20 +976,20 @@ export async function scrapeFiscalYear(fiscalYear: number): Promise<ScrapeResult
     } else {
       console.log(`Using cached file: ${zipPath}`);
     }
-    
+
     // Extract CSV from ZIP
     const csvContent = await extractZip(zipPath);
     if (!csvContent) {
       result.error = 'Failed to extract CSV from ZIP';
       return result;
     }
-    
+
     // Parse CSV
     console.log('Parsing CSV...');
     const allRecords = parseCSV(csvContent);
     result.totalRecords = allRecords.length;
     console.log(`Parsed ${allRecords.length} total records`);
-    
+
     // Filter for childcare-related records
     const childcareRecords = allRecords.filter(r => 
       isChildcareRelated(r) || (isDHHS(r) && r.amount && r.amount > 1000)
@@ -589,19 +997,19 @@ export async function scrapeFiscalYear(fiscalYear: number): Promise<ScrapeResult
     result.childcareRecords = childcareRecords.length;
     result.totalAmount = childcareRecords.reduce((sum, r) => sum + (r.amount || 0), 0);
     console.log(`Found ${childcareRecords.length} childcare-related records ($${result.totalAmount.toLocaleString()})`);
-    
+
     // Save to database
     console.log('Saving to database...');
     result.importedRecords = await saveRecords(childcareRecords, fiscalYear);
-    
+
     result.success = true;
     console.log(`Imported ${result.importedRecords} new records`);
-    
+
   } catch (error) {
     result.error = error instanceof Error ? error.message : 'Unknown error';
     console.error('Scrape error:', error);
   }
-  
+
   return result;
 }
 
@@ -610,17 +1018,104 @@ export async function scrapeFiscalYear(fiscalYear: number): Promise<ScrapeResult
  */
 export async function scrapeMultipleYears(years: number[]): Promise<ScrapeResult[]> {
   const results: ScrapeResult[] = [];
-  
+
   for (const year of years) {
     console.log(`\n=== Scraping FY${year} ===`);
     const result = await scrapeFiscalYear(year);
     results.push(result);
-    
+
     // Small delay between years
     await new Promise(resolve => setTimeout(resolve, 1000));
   }
-  
+
   return results;
+}
+
+export async function crawlAndDownloadTransparentNH(): Promise<{ crawl: CrawlResult; downloads: CrawlDownloadResult[] }> {
+  const crawl = await crawlTransparentNH(TRANSPARENT_NH_ROOTS, CRAWL_MAX_PAGES, CRAWL_MAX_DEPTH);
+  const downloads = await downloadDiscoveredFiles(crawl.downloadLinks, DATA_DIR);
+  return { crawl, downloads };
+}
+
+export async function crawlDownloadAndIngestTransparentNH(): Promise<{
+  crawl: CrawlResult;
+  downloads: CrawlDownloadResult[];
+  ingest: IngestionSummary;
+}> {
+  return crawlDownloadAndIngestTransparentNHWithOptions({ dryRun: false });
+}
+
+export async function crawlDownloadAndIngestTransparentNHWithOptions(options: {
+  dryRun: boolean;
+}): Promise<{
+  crawl: CrawlResult;
+  downloads: CrawlDownloadResult[];
+  ingest: IngestionSummary;
+}> {
+  const startedAt = new Date().toISOString();
+  const crawl = await crawlTransparentNH(TRANSPARENT_NH_ROOTS, CRAWL_MAX_PAGES, CRAWL_MAX_DEPTH);
+  const downloads = await downloadDiscoveredFiles(crawl.downloadLinks, DATA_DIR);
+
+  const zipDownloads = downloads.filter(d => d.savedPath && isZipUrl(d.url));
+  let totalRecords = 0;
+  let childcareRecords = 0;
+  let importedRecords = 0;
+  let totalAmount = 0;
+  const errors: string[] = [];
+
+  for (const download of zipDownloads) {
+    const zipPath = download.savedPath as string;
+    const result = await ingestZipFile(zipPath, download.url, options.dryRun);
+
+    totalRecords += result.totalRecords;
+    childcareRecords += result.childcareRecords;
+    importedRecords += result.importedRecords;
+    totalAmount += result.totalAmount;
+
+    if (result.error) {
+      errors.push(`${download.url}: ${result.error}`);
+    }
+  }
+
+  const ingest: IngestionSummary = {
+    totalRecords,
+    childcareRecords,
+    importedRecords,
+    totalAmount,
+    filesProcessed: zipDownloads.length,
+    filesWithErrors: errors.length,
+    errors,
+  };
+
+  const crawlErrors = crawl.errors.concat(downloads.filter(d => d.error).map(d => `${d.url}: ${d.error}`));
+  const allErrors = crawlErrors.concat(ingest.errors);
+  const completedAt = new Date().toISOString();
+
+  await logIngestionRun({
+    source: 'TransparentNH Crawl Ingest',
+    status: allErrors.length > 0 ? 'failed' : 'completed',
+    startedAt,
+    completedAt,
+    recordsProcessed: ingest.totalRecords,
+    recordsImported: ingest.importedRecords,
+    details: {
+      dryRun: options.dryRun,
+      crawl: {
+        pagesVisited: crawl.pagesVisited,
+        pagesDiscovered: crawl.pagesDiscovered,
+        downloadsAttempted: downloads.length,
+      },
+      ingest,
+      downloadErrors: crawlErrors,
+    },
+    errorMessage: allErrors.length > 0 ? allErrors.slice(0, 10).join(' | ') : undefined,
+  });
+
+  return {
+    crawl,
+    downloads,
+    ingest,
+  };
 }
 
 /**
@@ -630,10 +1125,19 @@ export async function scrapeRecentYears(): Promise<ScrapeResult[]> {
   const currentYear = new Date().getMonth() >= 6 
     ? new Date().getFullYear() + 1 
     : new Date().getFullYear();
-  
-  const years = [currentYear, currentYear - 1, currentYear - 2].filter(y => y in FISCAL_YEAR_URLS);
-  
-  return scrapeMultipleYears(years);
+
+  const years = [currentYear, currentYear - 1, currentYear - 2];
+  const available = years.filter(y => y in FISCAL_YEAR_URLS);
+
+  if (available.length > 0) {
+    return scrapeMultipleYears(available);
+  }
+
+  const crawl = await crawlTransparentNH(TRANSPARENT_NH_ROOTS, CRAWL_MAX_PAGES, CRAWL_MAX_DEPTH);
+  const byYear = groupLinksByFiscalYear(crawl.downloadLinks);
+  const discoveredYears = years.filter(y => !!byYear[y]);
+
+  return scrapeMultipleYears(discoveredYears);
 }
 
 /**
@@ -651,6 +1155,9 @@ export default {
   scrapeMultipleYears,
   scrapeRecentYears,
   getAvailableFiscalYears,
+  crawlAndDownloadTransparentNH,
+  crawlDownloadAndIngestTransparentNH,
+  crawlDownloadAndIngestTransparentNHWithOptions,
   extractZip,
   parseCSV,
   saveRecords,
