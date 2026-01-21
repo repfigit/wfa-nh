@@ -1090,8 +1090,16 @@
           throw new Error(err.error || 'Failed to start CCIS scraper');
         }
         const data = await res.json();
-        const count = data.result?.providersImported || 'unknown';
-        completeProgress('ccis', `Done! ${count} providers imported`);
+        
+        // When running in Trigger.dev, the initial response just gives us the Run ID
+        if (data.runId) {
+          completeProgress('ccis', `Job Queued (Run ID: ${data.runId})`);
+        } else {
+          // Fallback for local execution/direct results
+          const count = data.result?.providersImported || 'unknown';
+          completeProgress('ccis', `Done! ${count} providers imported`);
+        }
+        
         refreshJobStatus();
       });
     }
