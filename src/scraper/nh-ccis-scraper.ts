@@ -71,6 +71,23 @@ async function launchBrowser(): Promise<Browser> {
   // Check if we're running in Trigger.dev environment
   const isTriggerDev = process.env.TRIGGER_SECRET_KEY !== undefined;
   
+  if (isTriggerDev) {
+    // In Trigger.dev (and other containerized environments), we use the installed system Chrome
+    return puppeteer.launch({
+      executablePath: '/usr/bin/google-chrome',
+      headless: true,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--disable-gpu',
+        '--window-size=1920,1080',
+      ],
+    });
+  }
+
+  // Local development fallback
   return puppeteer.launch({
     headless: true,
     args: [
@@ -81,10 +98,6 @@ async function launchBrowser(): Promise<Browser> {
       '--disable-gpu',
       '--window-size=1920,1080',
     ],
-    // Trigger.dev needs explicit executable path if system chrome is used,
-    // but typically standard puppeteer cache works if dependencies are installed.
-    // In some serverless envs, you might need 'puppeteer-core' + chrome-aws-lambda,
-    // but Trigger.dev supports standard Puppeteer with the right apt packages.
   });
 }
 
