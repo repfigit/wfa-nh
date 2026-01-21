@@ -32,7 +32,6 @@ export async function initDb(): Promise<void> {
   // Try Turso first if URL is set
   if (process.env.TURSO_DATABASE_URL) {
     try {
-      console.log('Attempting to use Turso...');
       if (!tursoClient) {
         tursoClient = createClient({
           url: process.env.TURSO_DATABASE_URL!,
@@ -42,7 +41,6 @@ export async function initDb(): Promise<void> {
       // Test the connection with a simple query
       await tursoClient.execute('SELECT 1');
       useTurso = true;
-      console.log('Using Turso successfully');
       return;
     } catch (error) {
       console.warn('Turso connection failed, falling back to SQLite:', error);
@@ -50,7 +48,6 @@ export async function initDb(): Promise<void> {
   }
   
   // Fallback to SQLite
-  console.log('Using SQLite');
   if (!SQL) {
     SQL = await initSqlJs();
   }
@@ -169,21 +166,19 @@ export async function execute(
  */
 export async function executeRaw(sql: string): Promise<void> {
   if (useTurso) {
-    console.log('Executing raw SQL on Turso, SQL length:', sql.length);
     // Split into individual statements and execute
     const statements = sql
       .split(';')
       .map(s => s.trim())
-      .filter(s => s.length > 0 && !s.startsWith('--'));
-    
-    console.log(`Found ${statements.length} statements to execute`);
+      .filter(s => s.length > 0)
+      // Remove comment-only lines from each statement
+      .map(s => s.split('\n').filter(line => !line.trim().startsWith('--')).join('\n').trim())
+      .filter(s => s.length > 0);
     
     for (let i = 0; i < statements.length; i++) {
       const stmt = statements[i];
-      console.log(`Executing statement ${i + 1}/${statements.length}: ${stmt.substring(0, 100)}...`);
       try {
         await tursoClient!.execute(stmt);
-        console.log(`Statement ${i + 1} executed successfully`);
       } catch (err: any) {
         console.error(`SQL Error on statement ${i + 1}:`, err.message);
         console.error('Statement was:', stmt);
@@ -191,7 +186,6 @@ export async function executeRaw(sql: string): Promise<void> {
       }
     }
   } else {
-    console.log('Executing raw SQL on SQLite');
     const db = await getSqliteDb();
     db.run(sql);
   }

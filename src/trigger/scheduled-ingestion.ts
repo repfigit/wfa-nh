@@ -8,6 +8,7 @@
  * - Weekly Tuesday 4 AM UTC: ProPublica 990 nonprofit data
  * - Weekly Wednesday 4 AM UTC: Census SAIPE demographics
  * - Weekly Thursday 4 AM UTC: Data.gov CCDF bulk data
+ * - Weekly Friday 4 AM UTC: NH CCIS provider directory (Puppeteer)
  * - Weekly Monday 8 AM UTC: Fraud analysis
  * - Weekly Sunday 2 AM UTC: Full data refresh orchestration
  * - Monthly 1st 3 AM UTC: Data quality check
@@ -19,6 +20,12 @@ import { scrapeACFData, scrapeACFMultipleYears } from "../scraper/acf-ccdf-scrap
 import { scrapeProPublica990 } from "../scraper/propublica-990-scraper.js";
 import { scrapeSAIPE, scrapeSAIPEMultipleYears } from "../scraper/census-saipe-scraper.js";
 import { scrapeDataGovCCDF, scrapeAllYears as scrapeAllCCDFYears } from "../scraper/datagov-ccdf-scraper.js";
+import { scrapeCCIS } from "../scraper/nh-ccis-scraper.js";
+import {
+  scrapeCurrentFiscalYear as scrapeTransparentNHCurrentYear,
+  scrapeAllHistoricalYears as scrapeTransparentNHAllYears,
+  getCurrentFiscalYear as getTransparentNHFiscalYear,
+} from "../scraper/transparent-nh-scraper.js";
 import { runFullFraudAnalysis } from "../analyzer/fraud-detector.js";
 import { initializeDb } from "../db/database.js";
 import { execute, query } from "../db/db-adapter.js";
@@ -260,9 +267,36 @@ export const weeklyFullRefresh = schedules.task({
     const results: Record<string, Record<string, unknown>> = {};
     const errors: string[] = [];
 
-    // 1. USAspending.gov - Federal awards
+    // =====================================================
+    // STEP 1: NH CCIS Provider Directory (AUTHORITATIVE SOURCE - MUST RUN FIRST)
+    // This populates provider_master which other sources link to
+    // =====================================================
     try {
-      logger.info("Step 1/4: Scraping USAspending.gov");
+      logger.info("Step 1/6: Scraping NH CCIS provider directory (authoritative source)");
+      const ccisResult = await scrapeCCIS();
+      results.nhCcis = {
+        success: ccisResult.success,
+        totalFound: ccisResult.totalFound,
+        imported: ccisResult.imported,
+        updated: ccisResult.updated
+      };
+      logger.info("NH CCIS complete - provider_master populated", results.nhCcis);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      errors.push(`NH CCIS: ${msg}`);
+      results.nhCcis = { success: false, error: msg };
+      logger.error("NH CCIS failed", { error: msg });
+    }
+
+    // Small delay between sources
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // =====================================================
+    // STEP 2: USAspending.gov - Federal awards
+    // Links to provider_master via entity resolver
+    // =====================================================
+    try {
+      logger.info("Step 2/6: Scraping USAspending.gov");
       const fiscalYear = getCurrentFiscalYear();
       const usaResult = await scrapeUSASpending(fiscalYear);
       results.usaspending = {
@@ -282,9 +316,12 @@ export const weeklyFullRefresh = schedules.task({
     // Small delay between sources
     await new Promise(resolve => setTimeout(resolve, 2000));
 
-    // 2. ACF CCDF - HHS statistics
+    // =====================================================
+    // STEP 3: ACF CCDF - HHS statistics
+    // Aggregate state-level data
+    // =====================================================
     try {
-      logger.info("Step 2/4: Scraping ACF CCDF data");
+      logger.info("Step 3/6: Scraping ACF CCDF data");
       const acfResults = await scrapeACFMultipleYears();
       const totalImported = acfResults.reduce((sum, r) => sum + r.importedRecords, 0);
       results.acfCcdf = {
@@ -304,19 +341,28 @@ export const weeklyFullRefresh = schedules.task({
     // Small delay
     await new Promise(resolve => setTimeout(resolve, 2000));
 
-    // 3. Get ingestion summary stats
+    // =====================================================
+    // STEP 4: Get ingestion summary stats including provider_master
+    // =====================================================
     try {
-      logger.info("Step 3/4: Gathering data summary");
+      logger.info("Step 4/6: Gathering data summary");
       await initializeDb();
 
+      // Get counts from both provider_master (new) and providers (legacy)
+      const providerMasterCount = await query('SELECT COUNT(*) as count FROM provider_master');
       const providerCount = await query('SELECT COUNT(*) as count FROM providers');
       const expenditureCount = await query('SELECT COUNT(*) as count FROM expenditures');
       const totalAmount = await query('SELECT SUM(amount) as total FROM expenditures');
+      const sourceLinksCount = await query('SELECT COUNT(*) as count FROM provider_source_links');
+      const pendingMatchesCount = await query('SELECT COUNT(*) as count FROM pending_matches WHERE status = ?', ['pending']);
 
       results.summary = {
-        providers: providerCount[0]?.count || 0,
+        providerMaster: providerMasterCount[0]?.count || 0,
+        providersLegacy: providerCount[0]?.count || 0,
         expenditures: expenditureCount[0]?.count || 0,
-        totalAmount: totalAmount[0]?.total || 0
+        totalAmount: totalAmount[0]?.total || 0,
+        sourceLinks: sourceLinksCount[0]?.count || 0,
+        pendingMatches: pendingMatchesCount[0]?.count || 0
       };
       logger.info("Data summary complete", results.summary);
     } catch (error) {
@@ -325,9 +371,11 @@ export const weeklyFullRefresh = schedules.task({
       results.summary = { error: msg };
     }
 
-    // 4. Run fraud analysis on refreshed data
+    // =====================================================
+    // STEP 5: Run fraud analysis on refreshed data
+    // =====================================================
     try {
-      logger.info("Step 4/4: Running fraud analysis");
+      logger.info("Step 5/6: Running fraud analysis");
       const fraudResult = await runFullFraudAnalysis();
       results.fraudAnalysis = {
         success: true,
@@ -343,11 +391,57 @@ export const weeklyFullRefresh = schedules.task({
       logger.error("Fraud analysis failed", { error: msg });
     }
 
+    // =====================================================
+    // STEP 6: Entity Resolution Summary
+    // Report on match quality and pending reviews
+    // =====================================================
+    try {
+      logger.info("Step 6/6: Entity resolution summary");
+      await initializeDb();
+
+      // Get match quality metrics
+      const matchStats = await query(`
+        SELECT
+          match_method,
+          COUNT(*) as count,
+          AVG(match_score) as avg_score
+        FROM provider_source_links
+        WHERE status = 'active'
+        GROUP BY match_method
+      `);
+
+      const pendingBySource = await query(`
+        SELECT source_system, COUNT(*) as count
+        FROM pending_matches
+        WHERE status = 'pending'
+        GROUP BY source_system
+      `);
+
+      const recentAudit = await query(`
+        SELECT action, COUNT(*) as count
+        FROM match_audit_log
+        WHERE created_at > datetime('now', '-1 day')
+        GROUP BY action
+      `);
+
+      results.entityResolution = {
+        matchStats,
+        pendingBySource,
+        recentAuditActions: recentAudit,
+        success: true
+      };
+      logger.info("Entity resolution summary complete", results.entityResolution);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      logger.error("Entity resolution summary failed", { error: msg });
+      results.entityResolution = { success: false, error: msg };
+    }
+
     const overallSuccess = errors.length === 0;
 
     await logIngestionRun('full-refresh', overallSuccess ? 'completed' : 'failed', {
       runId,
-      recordsProcessed: 4,
+      recordsProcessed: 6,
       recordsImported: (results.usaspending as any)?.importedRecords || 0,
       results,
       errors: errors.length > 0 ? errors : undefined
@@ -635,6 +729,199 @@ export const weeklyDataGovCCDFIngest = schedules.task({
   },
 });
 
+/**
+ * Weekly NH CCIS Provider Directory Scraper
+ * Fetches provider data from NH Child Care Search portal
+ * Runs Friday at 4 AM UTC
+ * Uses Puppeteer for browser automation (Salesforce site)
+ */
+export const weeklyNHCCISIngest = schedules.task({
+  id: "weekly-nh-ccis-ingest",
+  cron: "0 4 * * 5", // Friday at 4 AM UTC
+  maxDuration: 600, // 10 minutes - Puppeteer scraping can be slow
+  run: async (payload) => {
+    logger.info("Weekly NH CCIS provider directory ingestion started", {
+      scheduledTime: payload.timestamp,
+      timezone: payload.timezone
+    });
+
+    const runId = await logIngestionRun('nh-ccis', 'started', {});
+
+    try {
+      const result = await scrapeCCIS();
+
+      await logIngestionRun('nh-ccis', result.success ? 'completed' : 'failed', {
+        runId,
+        recordsProcessed: result.totalFound,
+        recordsImported: result.imported,
+        recordsUpdated: result.updated,
+        downloadPath: result.downloadPath,
+        error: result.error
+      });
+
+      logger.info("Weekly NH CCIS ingestion complete", {
+        success: result.success,
+        totalFound: result.totalFound,
+        imported: result.imported,
+        updated: result.updated
+      });
+
+      return {
+        success: result.success,
+        source: 'nh-ccis',
+        totalFound: result.totalFound,
+        imported: result.imported,
+        updated: result.updated,
+        downloadPath: result.downloadPath,
+        error: result.error
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      await logIngestionRun('nh-ccis', 'failed', { runId, error: errorMessage });
+      logger.error("Weekly NH CCIS ingestion failed", { error: errorMessage });
+      throw error;
+    }
+  },
+});
+
+/**
+ * Weekly TransparentNH Current Fiscal Year Scraper
+ * Downloads and processes the CURRENT fiscal year expenditure data
+ * This file is updated throughout the year, so we scrape it weekly
+ * Runs Saturday at 3 AM UTC
+ */
+export const weeklyTransparentNHCurrentYear = schedules.task({
+  id: "weekly-transparent-nh-current-year",
+  cron: "0 3 * * 6", // Saturday at 3 AM UTC
+  maxDuration: 600, // 10 minutes - large ZIP files
+  run: async (payload) => {
+    const fiscalYear = getTransparentNHFiscalYear();
+    logger.info("Weekly TransparentNH current year ingestion started", {
+      fiscalYear,
+      scheduledTime: payload.timestamp,
+      timezone: payload.timezone
+    });
+
+    const runId = await logIngestionRun('transparent-nh', 'started', { fiscalYear });
+
+    try {
+      const result = await scrapeTransparentNHCurrentYear();
+
+      await logIngestionRun('transparent-nh', result.success ? 'completed' : 'failed', {
+        runId,
+        fiscalYear: result.fiscalYear,
+        recordsProcessed: result.totalRecords,
+        recordsImported: result.importedRecords,
+        childcareRecords: result.childcareRecords,
+        totalAmount: result.totalAmount,
+        error: result.error
+      });
+
+      logger.info("Weekly TransparentNH current year ingestion complete", {
+        success: result.success,
+        fiscalYear: result.fiscalYear,
+        totalRecords: result.totalRecords,
+        childcareRecords: result.childcareRecords,
+        importedRecords: result.importedRecords,
+        totalAmount: result.totalAmount
+      });
+
+      return {
+        success: result.success,
+        source: 'transparent-nh',
+        fiscalYear: result.fiscalYear,
+        totalRecords: result.totalRecords,
+        childcareRecords: result.childcareRecords,
+        importedRecords: result.importedRecords,
+        totalAmount: result.totalAmount,
+        error: result.error
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      await logIngestionRun('transparent-nh', 'failed', { runId, fiscalYear, error: errorMessage });
+      logger.error("Weekly TransparentNH current year ingestion failed", { error: errorMessage });
+      throw error;
+    }
+  },
+});
+
+/**
+ * One-time TransparentNH Historical Data Ingestion
+ * Downloads and processes ALL fiscal years (FY 2009 - present)
+ * This is meant to be triggered manually for initial setup
+ * WARNING: This is a LARGE operation that may take 30+ minutes
+ */
+export const transparentNHHistoricalIngest = schedules.task({
+  id: "transparent-nh-historical-ingest",
+  // No cron - this is triggered manually via the dashboard or API
+  maxDuration: 3600, // 1 hour - this is a large operation
+  run: async (payload) => {
+    logger.info("TransparentNH FULL historical ingestion started", {
+      scheduledTime: payload.timestamp,
+      timezone: payload.timezone,
+      warning: "This will download all fiscal years from FY 2009 to present"
+    });
+
+    const runId = await logIngestionRun('transparent-nh-historical', 'started', {
+      type: 'full-historical'
+    });
+
+    try {
+      const results = await scrapeTransparentNHAllYears();
+
+      const successful = results.filter(r => r.success);
+      const totalRecords = successful.reduce((sum, r) => sum + r.totalRecords, 0);
+      const totalChildcare = successful.reduce((sum, r) => sum + r.childcareRecords, 0);
+      const totalImported = successful.reduce((sum, r) => sum + r.importedRecords, 0);
+      const totalAmount = successful.reduce((sum, r) => sum + r.totalAmount, 0);
+
+      await logIngestionRun('transparent-nh-historical', successful.length > 0 ? 'completed' : 'failed', {
+        runId,
+        recordsProcessed: totalRecords,
+        recordsImported: totalImported,
+        yearsProcessed: results.length,
+        yearsSuccessful: successful.length,
+        totalChildcare,
+        totalAmount,
+        yearRange: `FY ${results[0]?.fiscalYear} - FY ${results[results.length - 1]?.fiscalYear}`,
+        errors: results.filter(r => !r.success).map(r => `FY ${r.fiscalYear}: ${r.error}`)
+      });
+
+      logger.info("TransparentNH FULL historical ingestion complete", {
+        yearsProcessed: results.length,
+        yearsSuccessful: successful.length,
+        totalRecords,
+        totalChildcare,
+        totalImported,
+        totalAmount
+      });
+
+      return {
+        success: successful.length > 0,
+        source: 'transparent-nh-historical',
+        yearsProcessed: results.length,
+        yearsSuccessful: successful.length,
+        totalRecords,
+        totalChildcare,
+        totalImported,
+        totalAmount,
+        results: results.map(r => ({
+          fiscalYear: r.fiscalYear,
+          success: r.success,
+          childcareRecords: r.childcareRecords,
+          totalAmount: r.totalAmount,
+          error: r.error
+        }))
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      await logIngestionRun('transparent-nh-historical', 'failed', { runId, error: errorMessage });
+      logger.error("TransparentNH FULL historical ingestion failed", { error: errorMessage });
+      throw error;
+    }
+  },
+});
+
 // Export all scheduled tasks
 export default {
   dailyUSASpendingIngest,
@@ -642,6 +929,9 @@ export default {
   weeklyProPublica990Ingest,
   weeklyCensusSAIPEIngest,
   weeklyDataGovCCDFIngest,
+  weeklyNHCCISIngest,
+  weeklyTransparentNHCurrentYear,
+  transparentNHHistoricalIngest,
   weeklyFraudAnalysis,
   weeklyFullRefresh,
   monthlyDataQualityCheck,

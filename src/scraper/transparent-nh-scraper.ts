@@ -8,26 +8,55 @@
 
 import { initializeDb, saveDb } from '../db/database.js';
 import { query, execute } from '../db/db-adapter.js';
+import {
+  resolveEntity,
+  normalizeName,
+  addProviderAlias,
+  DEFAULT_MATCH_CONFIG,
+} from '../matcher/entity-resolver.js';
 import { existsSync, mkdirSync, writeFileSync, readFileSync } from 'fs';
 import { createHash } from 'crypto';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import * as cheerio from 'cheerio';
+import puppeteer from 'puppeteer';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Use /tmp on Vercel (read-only filesystem), local data dir otherwise
 const DATA_DIR = process.env.VERCEL ? '/tmp/downloads' : path.join(__dirname, '../../data/downloads');
 
-// TransparentNH fiscal year download URLs (fallback if crawl yields nothing)
-// These URLs follow the expected pattern on the site
+// TransparentNH fiscal year download URLs
+// Source: https://www.nh.gov/transparentnh/where-the-money-goes/fiscal-yr-downloads.htm
+const FISCAL_YEAR_BASE_URL = 'https://www.nh.gov/transparentnh/where-the-money-goes/documents';
+
 const FISCAL_YEAR_URLS: Record<number, string> = {
-  2025: 'https://www.nh.gov/transparentnh/where-the-money-goes/documents/fy2025.zip',
-  2024: 'https://www.nh.gov/transparentnh/where-the-money-goes/documents/fy2024.zip',
-  2023: 'https://www.nh.gov/transparentnh/where-the-money-goes/documents/fy2023.zip',
-  2022: 'https://www.nh.gov/transparentnh/where-the-money-goes/documents/fy2022.zip',
-  2021: 'https://www.nh.gov/transparentnh/where-the-money-goes/documents/fy2021.zip',
-  2020: 'https://www.nh.gov/transparentnh/where-the-money-goes/documents/fy2020.zip',
+  2026: `${FISCAL_YEAR_BASE_URL}/expenditure-register-2026.zip`,
+  2025: `${FISCAL_YEAR_BASE_URL}/expenditure-register-2025.zip`,
+  2024: `${FISCAL_YEAR_BASE_URL}/expenditure-register-2024.zip`,
+  2023: `${FISCAL_YEAR_BASE_URL}/expenditure-register-2023.zip`,
+  2022: `${FISCAL_YEAR_BASE_URL}/expenditure-register-2022.zip`,
+  2021: `${FISCAL_YEAR_BASE_URL}/expenditure-register-2021.zip`,
+  2020: `${FISCAL_YEAR_BASE_URL}/expenditure-register-2020.zip`,
+  2019: `${FISCAL_YEAR_BASE_URL}/expenditure-register-2019.zip`,
+  2018: `${FISCAL_YEAR_BASE_URL}/expenditure-register-2018.zip`,
+  2017: `${FISCAL_YEAR_BASE_URL}/expenditure-register-2017.zip`,
+  2016: `${FISCAL_YEAR_BASE_URL}/expenditure-register-2016.zip`,
+  2015: `${FISCAL_YEAR_BASE_URL}/expenditure-register-2015.zip`,
+  2014: `${FISCAL_YEAR_BASE_URL}/expenditure-register-2014.zip`,
+  2013: `${FISCAL_YEAR_BASE_URL}/expenditure-register-2013.zip`,
+  2012: `${FISCAL_YEAR_BASE_URL}/expenditure-register-2012.zip`,
+  2011: `${FISCAL_YEAR_BASE_URL}/expenditure-register-2011.zip`,
+  2010: `${FISCAL_YEAR_BASE_URL}/expenditure-register-2010.zip`,
+  2009: `${FISCAL_YEAR_BASE_URL}/expenditure-register-2009.zip`,
 };
+
+// Current fiscal year (updated throughout the year)
+// NH fiscal year runs July 1 - June 30, so FY2026 = July 2025 - June 2026
+function getCurrentFiscalYear(): number {
+  const now = new Date();
+  // If we're in July or later, we're in the next fiscal year
+  return now.getMonth() >= 6 ? now.getFullYear() + 1 : now.getFullYear();
+}
 
 const TRANSPARENT_NH_ROOTS = [
   'https://www.nh.gov/transparentnh/where-the-money-goes/fiscal-yr-downloads.htm',
@@ -517,103 +546,129 @@ function groupLinksByFiscalYear(links: CrawlResult['downloadLinks']): Record<num
  * Download a file from URL with retry logic and browser emulation
  */
 async function downloadFile(url: string, destPath: string, maxRetries = 3): Promise<boolean> {
-  const baseUrl = 'https://www.nh.gov/transparentnh/where-the-money-goes/';
   const downloadPageUrl = 'https://www.nh.gov/transparentnh/where-the-money-goes/fiscal-yr-downloads.htm';
+
+  // Ensure download directory exists
+  const downloadDir = path.dirname(destPath);
+  if (!existsSync(downloadDir)) {
+    mkdirSync(downloadDir, { recursive: true });
+  }
+
+  let browser = null;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      console.log(`Download attempt ${attempt}/${maxRetries} for ${url}...`);
+      console.log(`Download attempt ${attempt}/${maxRetries} using Puppeteer for ${url}...`);
 
-      // Add random delay between attempts (2-5 seconds)
+      // Add random delay between attempts
       if (attempt > 1) {
         await randomSleep(2000, 5000);
       }
 
-      // First, try to "visit" the download page to establish a session
-      if (attempt === 1) {
-        console.log('Establishing session by visiting download page...');
-        try {
-          const sessionResponse = await fetch(downloadPageUrl, {
-            headers: getBrowserHeaders(),
-            redirect: 'follow',
-          });
-          console.log(`Download page status: ${sessionResponse.status}`);
-          // Small delay after visiting the page
-          await randomSleep(500, 1500);
-        } catch (e) {
-          console.log('Could not access download page, continuing anyway...');
-        }
-      }
-
-      // Now try to download the file with referer header
-      const response = await fetch(url, {
-        headers: getBrowserHeaders(downloadPageUrl),
-        redirect: 'follow',
+      browser = await puppeteer.launch({
+        headless: true,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-accelerated-2d-canvas',
+          '--disable-gpu',
+        ],
       });
 
-      console.log(`Response status: ${response.status}`);
+      const page = await browser.newPage();
+      await page.setViewport({ width: 1920, height: 1080 });
+      await page.setUserAgent(
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      );
 
-      if (response.status === 403) {
-        console.log('Access forbidden (403) - site may be blocking automated requests');
-        if (attempt < maxRetries) {
-          console.log('Will retry with longer delay...');
-          await randomSleep(3000, 7000);
-          continue;
-        }
-        throw new Error(`HTTP 403: Access Forbidden - site is blocking automated downloads`);
-      }
+      // Set up download behavior
+      const client = await page.createCDPSession();
+      await client.send('Page.setDownloadBehavior', {
+        behavior: 'allow',
+        downloadPath: downloadDir,
+      });
 
-      if (response.status === 404) {
-        // Check if this is a real 404 or a bot-block masquerading as 404
-        const contentType = response.headers.get('content-type') || '';
-        const contentLength = response.headers.get('content-length');
+      // First visit the download page to establish session/cookies
+      console.log('Visiting download page to establish session...');
+      await page.goto(downloadPageUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+      await randomSleep(1000, 2000);
 
-        if (contentType.includes('text/html') && contentLength && parseInt(contentLength) < 1000) {
-          console.log('Received small HTML response for ZIP file - likely bot protection');
-          if (attempt < maxRetries) {
-            await randomSleep(3000, 7000);
-            continue;
+      // Now navigate to the file URL to trigger download
+      console.log('Triggering download...');
+
+      // Use page.evaluate to click the link or fetch the file
+      const downloadPromise = new Promise<Buffer>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error('Download timeout')), 60000);
+
+        page.on('response', async (response) => {
+          if (response.url() === url || response.url().includes('expenditure-register')) {
+            try {
+              const buffer = await response.buffer();
+              clearTimeout(timeout);
+              resolve(buffer);
+            } catch (e) {
+              // Response might not have a body
+            }
           }
+        });
+      });
+
+      // Navigate to the download URL
+      await page.goto(url, { waitUntil: 'networkidle0', timeout: 60000 }).catch(() => {
+        // Navigation might "fail" because it's a download, not a page
+      });
+
+      // Wait a bit for download to complete
+      await randomSleep(3000, 5000);
+
+      // Check if file was downloaded directly to the download directory
+      const fileName = path.basename(url);
+      const downloadedPath = path.join(downloadDir, fileName);
+
+      let fileBuffer: Buffer | null = null;
+
+      // Try to get the buffer from the response
+      try {
+        fileBuffer = await Promise.race([
+          downloadPromise,
+          new Promise<Buffer>((_, reject) => setTimeout(() => reject(new Error('timeout')), 10000))
+        ]);
+      } catch {
+        // Check if file exists in download directory
+        if (existsSync(downloadedPath)) {
+          fileBuffer = readFileSync(downloadedPath) as unknown as Buffer;
+        } else if (existsSync(destPath)) {
+          fileBuffer = readFileSync(destPath) as unknown as Buffer;
         }
-        throw new Error(`HTTP 404: File not found - ${url}`);
       }
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
+      await browser.close();
+      browser = null;
 
-      // Verify we got a ZIP file (check content-type or first bytes)
-      const contentType = response.headers.get('content-type') || '';
-      if (contentType.includes('text/html')) {
-        console.log('Received HTML instead of ZIP - possible redirect or block page');
-        if (attempt < maxRetries) {
-          await randomSleep(2000, 5000);
-          continue;
-        }
-        throw new Error('Received HTML response instead of ZIP file');
+      if (!fileBuffer) {
+        // Last resort: try direct fetch with cookies from the browser session
+        console.log('Puppeteer download did not capture file, trying direct download...');
+        throw new Error('Could not capture download');
       }
-
-      const buffer = await response.arrayBuffer();
 
       // Verify it's a valid ZIP (starts with PK magic bytes)
-      const bytes = new Uint8Array(buffer);
+      const bytes = new Uint8Array(fileBuffer);
       if (bytes.length < 4 || bytes[0] !== 0x50 || bytes[1] !== 0x4B) {
         console.log('Downloaded file is not a valid ZIP');
-        if (attempt < maxRetries) {
-          await randomSleep(2000, 5000);
-          continue;
-        }
         throw new Error('Downloaded file is not a valid ZIP archive');
       }
 
-      const fs = await import('fs');
-      fs.writeFileSync(destPath, Buffer.from(buffer));
-
-      console.log(`Successfully downloaded to ${destPath} (${buffer.byteLength} bytes)`);
+      writeFileSync(destPath, fileBuffer);
+      console.log(`Successfully downloaded to ${destPath} (${fileBuffer.length} bytes)`);
       return true;
 
     } catch (error) {
       console.error(`Attempt ${attempt} failed:`, error);
+      if (browser) {
+        await browser.close();
+        browser = null;
+      }
       if (attempt === maxRetries) {
         console.error(`All ${maxRetries} download attempts failed`);
         throw error;
@@ -626,30 +681,56 @@ async function downloadFile(url: string, destPath: string, maxRetries = 3): Prom
 
 /**
  * Extract ZIP file and return CSV content
+ * Handles ZIPs with multiple monthly CSV files by concatenating them
  */
 async function extractZip(zipPath: string): Promise<string | null> {
   try {
     // Use dynamic import for JSZip
     const JSZip = (await import('jszip')).default;
     const fs = await import('fs');
-    
+
     const zipData = fs.readFileSync(zipPath);
     const zip = await JSZip.loadAsync(zipData);
-    
-    // Find the CSV file in the ZIP
-    const csvFileName = Object.keys(zip.files).find(name => 
-      name.toLowerCase().endsWith('.csv')
+
+    // Find ALL CSV files in the ZIP
+    const csvFileNames = Object.keys(zip.files).filter(name =>
+      name.toLowerCase().endsWith('.csv') && !zip.files[name].dir
     );
-    
-    if (!csvFileName) {
+
+    if (csvFileNames.length === 0) {
       console.error('No CSV file found in ZIP');
       return null;
     }
-    
-    console.log(`Extracting ${csvFileName}...`);
-    const csvContent = await zip.files[csvFileName].async('string');
-    
-    return csvContent;
+
+    console.log(`Found ${csvFileNames.length} CSV files in ZIP`);
+
+    // Extract and concatenate all CSV files
+    let combinedContent = '';
+    let headerLine = '';
+    let isFirstFile = true;
+
+    for (const csvFileName of csvFileNames) {
+      console.log(`Extracting ${csvFileName}...`);
+      const csvContent = await zip.files[csvFileName].async('string');
+
+      const lines = csvContent.split(/\r?\n/);
+
+      if (isFirstFile) {
+        // Keep the header from the first file
+        headerLine = lines[0];
+        combinedContent = csvContent;
+        isFirstFile = false;
+      } else {
+        // Skip the header line for subsequent files
+        const dataLines = lines.slice(1).filter(line => line.trim());
+        if (dataLines.length > 0) {
+          combinedContent += '\n' + dataLines.join('\n');
+        }
+      }
+    }
+
+    console.log(`Combined ${csvFileNames.length} CSV files`);
+    return combinedContent;
   } catch (error) {
     console.error('Error extracting ZIP:', error);
     return null;
@@ -708,6 +789,8 @@ function parseCSV(csvContent: string): TransparentNHRecord[] {
             record.accountingUnit = value;
             break;
           case 'expense_class':
+          case 'expenditure_class':
+          case 'expenditure_class_name':
           case 'class':
           case 'exp_class':
             record.expenseClass = value;
@@ -724,6 +807,7 @@ function parseCSV(csvContent: string): TransparentNHRecord[] {
             record.vendorName = value;
             break;
           case 'amount':
+          case 'dollar_amount':
           case 'expenditure_amount':
           case 'payment_amount':
           case 'transaction_amount':
@@ -837,36 +921,59 @@ function isDHHS(record: TransparentNHRecord): boolean {
 }
 
 /**
- * Save records to the database
+ * Save records to the database using entity resolver for provider matching
  */
 async function saveRecords(records: TransparentNHRecord[], fiscalYear: number): Promise<number> {
   await initializeDb();
   let savedCount = 0;
-  
-  // Get existing providers for matching
-  const providers = await query('SELECT id, name FROM providers');
-  const providerMap = new Map<string, number>();
-  for (const row of providers) {
-    const name = (row.name as string).toLowerCase();
-    providerMap.set(name, row.id as number);
-  }
-  
+
   for (const record of records) {
     try {
-      // Try to match to existing provider
-      let providerId: number | null = null;
-      const vendorLower = (record.vendorName || '').toLowerCase();
-      
-      for (const [providerName, id] of providerMap) {
-        if (vendorLower.includes(providerName) || providerName.includes(vendorLower)) {
-          providerId = id;
-          break;
+      // Use entity resolver instead of weak substring matching
+      let providerMasterId: number | null = null;
+      let legacyProviderId: number | null = null;
+
+      if (record.vendorName) {
+        // Create a unique identifier for this expenditure record
+        const sourceIdentifier = `TNH-${fiscalYear}-${record.vendorName}-${record.amount || 0}-${record.transactionDate || 'nodate'}`;
+
+        // Use the entity resolver to find matching provider_master record
+        const matchResult = await resolveEntity({
+          name: record.vendorName,
+          address: null,  // TransparentNH doesn't provide address
+          city: null,
+          zip: null,
+          phone: null,
+          sourceSystem: 'transparent_nh',
+          sourceIdentifier: sourceIdentifier,
+        }, {
+          ...DEFAULT_MATCH_CONFIG,
+          // Be more lenient since we only have vendor name
+          autoMatchThreshold: 0.80,
+          reviewThreshold: 0.55,
+        });
+
+        if (matchResult.matched && matchResult.providerId) {
+          providerMasterId = matchResult.providerId;
+
+          // Add vendor name as alias if it's different from the matched name
+          const normalizedVendor = normalizeName(record.vendorName);
+          await addProviderAlias(providerMasterId, record.vendorName, 'vendor_name', 'transparent_nh', matchResult.score);
+        }
+
+        // Also try to match to legacy providers table for backward compatibility
+        const legacyMatch = await query(
+          `SELECT id FROM providers WHERE name = ? LIMIT 1`,
+          [record.vendorName]
+        );
+        if (legacyMatch.length > 0) {
+          legacyProviderId = legacyMatch[0].id as number;
         }
       }
-      
-      // Check for duplicate
+
+      // Check for duplicate expenditure
       const existing = await query(`
-        SELECT id FROM expenditures 
+        SELECT id FROM expenditures
         WHERE vendor_name = ? AND amount = ? AND fiscal_year = ?
         AND (payment_date = ? OR (payment_date IS NULL AND ? IS NULL))
         LIMIT 1
@@ -877,10 +984,10 @@ async function saveRecords(records: TransparentNHRecord[], fiscalYear: number): 
         record.transactionDate || null,
         record.transactionDate || null,
       ]);
-      
+
       if (existing.length > 0) continue;
-      
-      // Insert expenditure
+
+      // Insert expenditure with provider_master_id (new) and provider_id (legacy)
       await execute(`
         INSERT INTO expenditures (
           provider_id, fiscal_year, department, agency, activity,
@@ -888,7 +995,7 @@ async function saveRecords(records: TransparentNHRecord[], fiscalYear: number): 
           source_url
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [
-        providerId,
+        legacyProviderId,  // Legacy provider_id for backward compatibility
         fiscalYear,
         record.department || null,
         record.agency || null,
@@ -900,28 +1007,28 @@ async function saveRecords(records: TransparentNHRecord[], fiscalYear: number): 
         record.activityProjectDescription || record.detailAccount || null,
         `TransparentNH FY${fiscalYear}`,
       ]);
-      
+
       savedCount++;
-      
-      // Create provider if childcare-related and not matched
-      if (!providerId && isChildcareRelated(record)) {
+
+      // Create legacy provider if childcare-related and not matched
+      // (provider_master should already exist from CCIS - this is fallback)
+      if (!legacyProviderId && isChildcareRelated(record)) {
         const isImmigrant = isImmigrantRelated(record);
-        
-        // Use OR IGNORE for SQLite compatibility
+
         await execute(`
-          INSERT INTO providers (name, accepts_ccdf, is_immigrant_owned, notes)
+          INSERT OR IGNORE INTO providers (name, accepts_ccdf, is_immigrant_owned, notes)
           VALUES (?, 1, ?, 'Auto-created from TransparentNH scrape')
         `, [
           record.vendorName || '',
           isImmigrant ? 1 : 0,
         ]);
       }
-      
+
     } catch (error) {
       // Skip errors
     }
   }
-  
+
   await saveDb();
   return savedCount;
 }
@@ -1123,9 +1230,7 @@ export async function crawlDownloadAndIngestTransparentNHWithOptions(options: {
  * Scrape recent fiscal years (current and previous 2)
  */
 export async function scrapeRecentYears(): Promise<ScrapeResult[]> {
-  const currentYear = new Date().getMonth() >= 6 
-    ? new Date().getFullYear() + 1 
-    : new Date().getFullYear();
+  const currentYear = getCurrentFiscalYear();
 
   const years = [currentYear, currentYear - 1, currentYear - 2];
   const available = years.filter(y => y in FISCAL_YEAR_URLS);
@@ -1142,20 +1247,90 @@ export async function scrapeRecentYears(): Promise<ScrapeResult[]> {
 }
 
 /**
+ * Scrape the current fiscal year only
+ * Use this for recurring/scheduled updates since FY data is updated throughout the year
+ */
+export async function scrapeCurrentFiscalYear(): Promise<ScrapeResult> {
+  const currentYear = getCurrentFiscalYear();
+  console.log(`Scraping current fiscal year: FY ${currentYear}`);
+  return scrapeFiscalYear(currentYear);
+}
+
+/**
+ * Scrape ALL historical fiscal years (initial full ingestion)
+ * This downloads and processes all available data from FY 2009 to present
+ * WARNING: This is a large operation - use for initial setup only
+ */
+export async function scrapeAllHistoricalYears(): Promise<ScrapeResult[]> {
+  const allYears = Object.keys(FISCAL_YEAR_URLS)
+    .map(Number)
+    .sort((a, b) => a - b); // Process oldest to newest
+
+  console.log(`Starting full historical ingestion: ${allYears.length} fiscal years (FY ${allYears[0]} - FY ${allYears[allYears.length - 1]})`);
+  console.log('This may take a while...\n');
+
+  const results: ScrapeResult[] = [];
+
+  for (const year of allYears) {
+    console.log(`\n=== Processing FY ${year} (${results.length + 1}/${allYears.length}) ===`);
+    try {
+      const result = await scrapeFiscalYear(year);
+      results.push(result);
+
+      if (result.success) {
+        console.log(`FY ${year}: ${result.childcareRecords} childcare records, $${result.totalAmount.toLocaleString()}`);
+      } else {
+        console.log(`FY ${year}: Failed - ${result.error}`);
+      }
+
+      // Small delay between years to be respectful to the server
+      await randomSleep(1000, 2000);
+    } catch (error) {
+      console.error(`FY ${year}: Exception - ${error}`);
+      results.push({
+        success: false,
+        fiscalYear: year,
+        totalRecords: 0,
+        childcareRecords: 0,
+        importedRecords: 0,
+        totalAmount: 0,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  }
+
+  // Summary
+  const successful = results.filter(r => r.success);
+  const totalChildcare = successful.reduce((sum, r) => sum + r.childcareRecords, 0);
+  const totalAmount = successful.reduce((sum, r) => sum + r.totalAmount, 0);
+
+  console.log('\n=== Full Historical Ingestion Complete ===');
+  console.log(`Years processed: ${results.length}`);
+  console.log(`Successful: ${successful.length}`);
+  console.log(`Total childcare records: ${totalChildcare.toLocaleString()}`);
+  console.log(`Total amount: $${totalAmount.toLocaleString()}`);
+
+  return results;
+}
+
+/**
  * Get available fiscal years
  */
 export function getAvailableFiscalYears(): number[] {
   return Object.keys(FISCAL_YEAR_URLS).map(Number).sort((a, b) => b - a);
 }
 
-// Export for use by upload endpoint
-export { extractZip, parseCSV, saveRecords, isChildcareRelated, isDHHS, FISCAL_YEAR_URLS };
+// Export for use by upload endpoint and scheduled tasks
+export { extractZip, parseCSV, saveRecords, isChildcareRelated, isDHHS, FISCAL_YEAR_URLS, getCurrentFiscalYear };
 
 export default {
   scrapeFiscalYear,
   scrapeMultipleYears,
   scrapeRecentYears,
+  scrapeCurrentFiscalYear,
+  scrapeAllHistoricalYears,
   getAvailableFiscalYears,
+  getCurrentFiscalYear,
   crawlAndDownloadTransparentNH,
   crawlDownloadAndIngestTransparentNH,
   crawlDownloadAndIngestTransparentNHWithOptions,

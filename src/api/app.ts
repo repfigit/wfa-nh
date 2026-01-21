@@ -19,7 +19,10 @@ import {
   scrapeFiscalYear,
   scrapeRecentYears,
   getAvailableFiscalYears,
+  scrapeCurrentFiscalYear,
+  scrapeAllHistoricalYears,
 } from '../scraper/transparent-nh-scraper.js';
+import { scrapeCCIS } from '../scraper/nh-ccis-scraper.js';
 import { tasks, runs, configure } from '@trigger.dev/sdk/v3';
 import { scrapeUSASpending, getNHStateOverview } from '../scraper/usaspending-scraper.js';
 
@@ -28,12 +31,21 @@ if (process.env.TRIGGER_SECRET_KEY) {
   configure({ secretKey: process.env.TRIGGER_SECRET_KEY });
 }
 
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 export const app = express();
 
 // Middleware
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.text({ limit: '50mb', type: 'text/csv' }));
+
+// Serve static files from the public directory
+app.use(express.static(path.join(__dirname, '../../public')));
 
 // Helper
 const asyncHandler = (fn: (req: Request, res: Response, next: NextFunction) => Promise<any>) => 
@@ -223,6 +235,70 @@ app.post('/api/admin/seed-sample-data', requireAuth, asyncHandler(async (req, re
 
 app.get('/api/scraper/transparent-nh/years', asyncHandler(async (req, res) => {
   res.json({ years: getAvailableFiscalYears() });
+}));
+
+// --- Scraper Trigger Endpoints ---
+
+// Trigger CCIS Provider Directory scraper
+app.post('/api/trigger/ccis', requireAuth, asyncHandler(async (req, res) => {
+  await ensureInitialized();
+
+  // Trigger the task in the background via Trigger.dev
+  const handle = await tasks.trigger('scrape-nh-ccis', req.body);
+  
+  res.json({ 
+    success: true, 
+    message: 'CCIS scraper task triggered',
+    runId: handle.id 
+  });
+}));
+
+// Trigger TransparentNH Historical Ingestion (all years)
+app.post('/api/trigger/transparent-nh-historical', requireAuth, asyncHandler(async (req, res) => {
+  await ensureInitialized();
+
+  const startTime = Date.now();
+
+  try {
+    const result = await scrapeAllHistoricalYears();
+    const duration = Date.now() - startTime;
+
+    res.json({
+      success: true,
+      message: 'TransparentNH historical ingestion completed',
+      result,
+      durationMs: duration,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message || 'TransparentNH historical ingestion failed',
+    });
+  }
+}));
+
+// Trigger TransparentNH Current Fiscal Year scraper
+app.post('/api/trigger/transparent-nh-current', requireAuth, asyncHandler(async (req, res) => {
+  await ensureInitialized();
+
+  const startTime = Date.now();
+
+  try {
+    const result = await scrapeCurrentFiscalYear();
+    const duration = Date.now() - startTime;
+
+    res.json({
+      success: true,
+      message: 'TransparentNH current year scraper completed',
+      result,
+      durationMs: duration,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message || 'TransparentNH current year scraper failed',
+    });
+  }
 }));
 
 // Catch-all

@@ -391,7 +391,61 @@
       gap: 0.5rem;
       flex-wrap: wrap;
     }
-    
+
+    /* Scraper Progress Bar */
+    .scraper-progress {
+      display: none;
+      margin-top: 0.75rem;
+    }
+    .scraper-progress.active {
+      display: block;
+    }
+    .progress-bar-container {
+      height: 8px;
+      background: var(--border);
+      border-radius: 4px;
+      overflow: hidden;
+      margin-bottom: 0.5rem;
+    }
+    .progress-bar {
+      height: 100%;
+      background: linear-gradient(90deg, var(--primary), var(--success), var(--primary));
+      background-size: 200% 100%;
+      animation: progress-animation 1.5s linear infinite;
+      width: 100%;
+      border-radius: 4px;
+    }
+    .progress-bar.complete {
+      background: var(--success);
+      animation: none;
+    }
+    .progress-bar.error {
+      background: var(--danger);
+      animation: none;
+    }
+    @keyframes progress-animation {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+    .progress-status {
+      font-size: 0.7rem;
+      color: var(--text-light);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .progress-status .spinner {
+      width: 12px;
+      height: 12px;
+      border: 2px solid var(--border);
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
     /* Active Jobs Panel */
     .active-jobs-panel {
       background: var(--primary);
@@ -604,27 +658,90 @@
           <div id="active-jobs-list" class="active-jobs-list"></div>
         </div>
         
+        <!-- Instructions Panel -->
+        <div class="card" style="border-left: 4px solid #3182ce; margin-bottom: 1.5rem;">
+          <div class="card-header"><h2>📋 Data Ingestion Workflow</h2></div>
+          <div class="card-body" style="font-size: 0.875rem;">
+            <p style="margin-bottom: 1rem;"><strong>Initial Setup (one-time):</strong></p>
+            <ol style="margin-left: 1.5rem; margin-bottom: 1rem;">
+              <li><strong>NH CCIS</strong> - Run first to populate the master provider directory</li>
+              <li><strong>TransparentNH Historical</strong> - Load all fiscal years (FY 2009-2026) ~30 min</li>
+              <li><strong>USAspending</strong> - Fetch federal CCDF awards</li>
+              <li><strong>Pattern Analysis</strong> - Run fraud detection</li>
+            </ol>
+            <p style="margin-bottom: 0.5rem;"><strong>Recurring Updates (automatic):</strong></p>
+            <ul style="margin-left: 1.5rem; font-size: 0.8rem; color: var(--text-light);">
+              <li>CCIS Provider Directory - Weekly (Friday 4 AM UTC)</li>
+              <li>TransparentNH Current FY - Weekly (Saturday 3 AM UTC)</li>
+              <li>USAspending - Daily (6 AM UTC)</li>
+              <li>Fraud Analysis - Weekly (Monday 8 AM UTC)</li>
+            </ul>
+          </div>
+        </div>
+
         <div class="card">
-          <div class="card-header"><h2>Data Scrapers & Discovery</h2><button class="btn btn-sm btn-outline" onclick="refreshJobStatus()">Refresh Status</button></div>
+          <div class="card-header"><h2>Data Scrapers & Ingestion</h2><button class="btn btn-sm btn-outline" onclick="refreshJobStatus()">Refresh Status</button></div>
           <div class="card-body">
             <div class="scraper-grid">
-              <div class="scraper-card">
-                <h4><span class="icon" style="background:#38a169;color:white;">$</span>TransparentNH Discover & Ingest</h4>
-                <p>Crawl TransparentNH roots to discover and ingest expenditure ZIP files.</p>
+              <!-- CCIS Provider Directory -->
+              <div class="scraper-card" id="card-ccis" style="border-left: 3px solid #805ad5;">
+                <h4><span class="icon" style="background:#805ad5;color:white;">👶</span>NH CCIS Provider Directory</h4>
+                <p>Authoritative source of NH childcare providers. Run FIRST to populate provider_master table.</p>
                 <div class="scraper-actions">
-                  <button class="btn btn-sm" onclick="startTransparentNHCrawlIngest(false)">Run Discovery + Ingest</button>
-                  <button class="btn btn-sm btn-outline" onclick="startTransparentNHCrawlIngest(true)">Dry Run</button>
+                  <button class="btn btn-sm" onclick="startCCISScraper()">Scrape CCIS</button>
+                </div>
+                <div class="scraper-progress" id="progress-ccis">
+                  <div class="progress-bar-container"><div class="progress-bar"></div></div>
+                  <div class="progress-status"><span class="spinner"></span><span class="status-text">Initializing...</span></div>
                 </div>
               </div>
-              <div class="scraper-card">
+
+              <!-- TransparentNH Historical -->
+              <div class="scraper-card" id="card-tnh-historical" style="border-left: 3px solid #d69e2e;">
+                <h4><span class="icon" style="background:#d69e2e;color:white;">📚</span>TransparentNH Historical</h4>
+                <p>One-time ingestion of ALL fiscal years (FY 2009-2026). Takes ~30 minutes.</p>
+                <div class="scraper-actions">
+                  <button class="btn btn-sm" onclick="startTransparentNHHistorical()">Load All Years</button>
+                </div>
+                <div class="scraper-progress" id="progress-tnh-historical">
+                  <div class="progress-bar-container"><div class="progress-bar"></div></div>
+                  <div class="progress-status"><span class="spinner"></span><span class="status-text">Initializing...</span></div>
+                </div>
+              </div>
+
+              <!-- TransparentNH Current Year -->
+              <div class="scraper-card" id="card-tnh-current" style="border-left: 3px solid #38a169;">
+                <h4><span class="icon" style="background:#38a169;color:white;">$</span>TransparentNH Current FY</h4>
+                <p>Ingest current fiscal year expenditures. Updated throughout the year.</p>
+                <div class="scraper-actions">
+                  <button class="btn btn-sm" onclick="startTransparentNHCurrentYear()">Scrape FY 2026</button>
+                </div>
+                <div class="scraper-progress" id="progress-tnh-current">
+                  <div class="progress-bar-container"><div class="progress-bar"></div></div>
+                  <div class="progress-status"><span class="spinner"></span><span class="status-text">Initializing...</span></div>
+                </div>
+              </div>
+
+              <!-- USAspending -->
+              <div class="scraper-card" id="card-usaspending">
                 <h4><span class="icon" style="background:#3182ce;color:white;">F</span>USAspending.gov (Federal)</h4>
                 <p>Fetch federal CCDF grant awards to NH.</p>
                 <div class="scraper-actions"><button class="btn btn-sm" onclick="startUSASpendingScraper()">Fetch Awards</button></div>
+                <div class="scraper-progress" id="progress-usaspending">
+                  <div class="progress-bar-container"><div class="progress-bar"></div></div>
+                  <div class="progress-status"><span class="spinner"></span><span class="status-text">Initializing...</span></div>
+                </div>
               </div>
-              <div class="scraper-card">
+
+              <!-- Pattern Analysis -->
+              <div class="scraper-card" id="card-fraud">
                 <h4><span class="icon" style="background:#e53e3e;color:white;">!</span>Pattern Analysis</h4>
-                <p>Run fraud detection algorithms.</p>
+                <p>Run fraud detection algorithms on all expenditure data.</p>
                 <div class="scraper-actions"><button class="btn btn-sm" onclick="startFraudAnalysis()">Run Full Analysis</button></div>
+                <div class="scraper-progress" id="progress-fraud">
+                  <div class="progress-bar-container"><div class="progress-bar"></div></div>
+                  <div class="progress-status"><span class="spinner"></span><span class="status-text">Initializing...</span></div>
+                </div>
               </div>
             </div>
           </div>
@@ -713,7 +830,47 @@
       if (key) { loadIngestionHistory(); refreshJobStatus(); }
     }
     function getAuthHeaders() { return { 'Content-Type': 'application/json', 'x-api-key': getApiKey() }; }
-    
+
+    // Progress bar helpers
+    function showProgress(cardId, statusText = 'Initializing...') {
+      const progress = document.getElementById(`progress-${cardId}`);
+      if (progress) {
+        progress.classList.add('active');
+        const bar = progress.querySelector('.progress-bar');
+        bar.classList.remove('complete', 'error');
+        updateProgressStatus(cardId, statusText);
+      }
+    }
+
+    function updateProgressStatus(cardId, statusText) {
+      const progress = document.getElementById(`progress-${cardId}`);
+      if (progress) {
+        const text = progress.querySelector('.status-text');
+        if (text) text.textContent = statusText;
+      }
+    }
+
+    function completeProgress(cardId, statusText = 'Complete!', isError = false) {
+      const progress = document.getElementById(`progress-${cardId}`);
+      if (progress) {
+        const bar = progress.querySelector('.progress-bar');
+        const spinner = progress.querySelector('.spinner');
+        bar.classList.add(isError ? 'error' : 'complete');
+        if (spinner) spinner.style.display = 'none';
+        updateProgressStatus(cardId, statusText);
+        // Hide after 5 seconds
+        setTimeout(() => {
+          progress.classList.remove('active');
+          if (spinner) spinner.style.display = '';
+        }, 5000);
+      }
+    }
+
+    function hideProgress(cardId) {
+      const progress = document.getElementById(`progress-${cardId}`);
+      if (progress) progress.classList.remove('active');
+    }
+
     document.querySelectorAll('nav a').forEach(link => {
       link.addEventListener('click', (e) => {
         e.preventDefault();
@@ -883,23 +1040,101 @@
     }
 
     async function startUSASpendingScraper() {
+      showProgress('usaspending', 'Connecting to USAspending.gov...');
       await safeTrigger(async () => {
-        await fetch(`${API_BASE}/trigger/usaspending`, { 
-          method: 'POST', 
-          headers: getAuthHeaders(), 
-          body: JSON.stringify({}) 
+        updateProgressStatus('usaspending', 'Fetching CCDF awards...');
+        const res = await fetch(`${API_BASE}/trigger/usaspending`, {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: JSON.stringify({})
         });
+        if (!res.ok) {
+          completeProgress('usaspending', 'Failed to fetch', true);
+          throw new Error('Failed to fetch federal awards');
+        }
+        completeProgress('usaspending', 'Federal awards fetched!');
         refreshJobStatus();
       });
     }
 
     async function startFraudAnalysis() {
+      showProgress('fraud', 'Running pattern analysis...');
       await safeTrigger(async () => {
-        await fetch(`${API_BASE}/trigger/fraud-analysis`, { 
-          method: 'POST', 
-          headers: getAuthHeaders(), 
-          body: JSON.stringify({}) 
+        updateProgressStatus('fraud', 'Analyzing expenditure patterns...');
+        const res = await fetch(`${API_BASE}/trigger/fraud-analysis`, {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: JSON.stringify({})
         });
+        if (!res.ok) {
+          completeProgress('fraud', 'Analysis failed', true);
+          throw new Error('Failed to run fraud analysis');
+        }
+        completeProgress('fraud', 'Analysis complete!');
+        refreshJobStatus();
+      });
+    }
+
+    async function startCCISScraper() {
+      showProgress('ccis', 'Connecting to CCIS portal...');
+      await safeTrigger(async () => {
+        updateProgressStatus('ccis', 'Scraping provider directory...');
+        const res = await fetch(`${API_BASE}/trigger/ccis`, {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: JSON.stringify({})
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          completeProgress('ccis', err.error || 'Failed', true);
+          throw new Error(err.error || 'Failed to start CCIS scraper');
+        }
+        const data = await res.json();
+        const count = data.result?.providersImported || 'unknown';
+        completeProgress('ccis', `Done! ${count} providers imported`);
+        refreshJobStatus();
+      });
+    }
+
+    async function startTransparentNHHistorical() {
+      if (!confirm('This will download ALL fiscal years (FY 2009-2026). This takes ~30 minutes. Continue?')) return;
+      showProgress('tnh-historical', 'Starting historical ingestion...');
+      await safeTrigger(async () => {
+        updateProgressStatus('tnh-historical', 'Downloading 18 fiscal years...');
+        const res = await fetch(`${API_BASE}/trigger/transparent-nh-historical`, {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: JSON.stringify({})
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          completeProgress('tnh-historical', err.error || 'Failed', true);
+          throw new Error(err.error || 'Failed to start historical ingestion');
+        }
+        const data = await res.json();
+        const years = data.result?.length || 0;
+        completeProgress('tnh-historical', `Done! ${years} fiscal years processed`);
+        refreshJobStatus();
+      });
+    }
+
+    async function startTransparentNHCurrentYear() {
+      showProgress('tnh-current', 'Downloading FY 2026 data...');
+      await safeTrigger(async () => {
+        updateProgressStatus('tnh-current', 'Processing expenditure records...');
+        const res = await fetch(`${API_BASE}/trigger/transparent-nh-current`, {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: JSON.stringify({})
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          completeProgress('tnh-current', err.error || 'Failed', true);
+          throw new Error(err.error || 'Failed to start current year ingestion');
+        }
+        const data = await res.json();
+        const records = data.result?.childcareRecords || 0;
+        completeProgress('tnh-current', `Done! ${records.toLocaleString()} records`);
         refreshJobStatus();
       });
     }

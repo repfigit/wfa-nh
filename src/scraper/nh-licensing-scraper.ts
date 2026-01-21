@@ -7,6 +7,15 @@
 
 import { initializeDb, saveDb } from '../db/database.js';
 import { query, execute } from '../db/db-adapter.js';
+import {
+  resolveEntity,
+  normalizeName,
+  normalizeAddress,
+  normalizeZip,
+  createSourceLink,
+  logMatchAudit,
+  DEFAULT_MATCH_CONFIG,
+} from '../matcher/entity-resolver.js';
 import * as cheerio from 'cheerio';
 
 const LICENSING_URL = 'https://www.dhhs.nh.gov/programs-services/childcare-parenting-childbirth/child-care-licensing';
@@ -127,73 +136,185 @@ function parseProviderListing(html: string): LicensedProvider[] {
 }
 
 /**
- * Save providers to database
+ * Save providers to database using entity resolver for matching
  */
 async function saveProviders(providers: LicensedProvider[]): Promise<number> {
   await initializeDb();
   let savedCount = 0;
-  
+
   for (const provider of providers) {
     try {
-      // Check for existing provider by name
-      const existing = await query(
-        'SELECT id FROM providers WHERE name = ? OR license_number = ?',
-        [provider.name, provider.licenseNumber || '']
-      );
-      
-      if (existing.length > 0) {
-        // Update existing
+      // Use license number as the unique identifier for this source
+      const sourceIdentifier = provider.licenseNumber || `LIC-${normalizeName(provider.name)}`;
+
+      // Use entity resolver to find matching provider_master record
+      const matchResult = await resolveEntity({
+        name: provider.name,
+        address: provider.address || null,
+        city: provider.city || null,
+        zip: provider.zip || null,
+        phone: provider.phone || null,
+        sourceSystem: 'licensing',
+        sourceIdentifier: sourceIdentifier,
+      }, DEFAULT_MATCH_CONFIG);
+
+      let providerMasterId: number | null = null;
+
+      if (matchResult.matched && matchResult.providerId) {
+        providerMasterId = matchResult.providerId;
+
+        // Update provider_master with license info (CCIS may not have this)
         await execute(`
-          UPDATE providers SET
+          UPDATE provider_master SET
             license_number = COALESCE(?, license_number),
-            license_type = COALESCE(?, license_type),
-            license_status = COALESCE(?, license_status),
-            address = COALESCE(?, address),
-            city = COALESCE(?, city),
             capacity = COALESCE(?, capacity),
-            updated_at = CURRENT_TIMESTAMP
+            updated_at = datetime('now')
           WHERE id = ?
         `, [
-          provider.licenseNumber,
-          provider.licenseType,
-          provider.licenseStatus,
-          provider.address,
-          provider.city,
-          provider.capacity,
-          existing[0].id,
-        ]);
-      } else {
-        // Insert new
-        const isImmigrant = checkImmigrantPatterns(provider.name) ? 1 : 0;
-        
-        await execute(`
-          INSERT INTO providers (
-            name, license_number, license_type, license_status,
-            address, city, state, zip, phone, capacity,
-            is_immigrant_owned, accepts_ccdf, notes
-          ) VALUES (?, ?, ?, ?, ?, ?, 'NH', ?, ?, ?, ?, 1, 'Imported from NH Licensing')
-        `, [
-          provider.name,
           provider.licenseNumber || null,
-          provider.licenseType || null,
-          provider.licenseStatus || null,
+          provider.capacity || null,
+          providerMasterId,
+        ]);
+
+        // Create source link if new
+        await createSourceLink(
+          providerMasterId,
+          'licensing',
+          sourceIdentifier,
+          provider.name,
+          matchResult.matchMethod,
+          matchResult.score,
+          matchResult.matchDetails
+        );
+
+        await logMatchAudit(
+          providerMasterId,
+          'licensing',
+          sourceIdentifier,
+          provider.name,
+          'matched',
+          matchResult.score,
+          matchResult.matchMethod
+        );
+
+      } else if (!matchResult.matched) {
+        // No match found - provider not in CCIS, create new provider_master record
+        const canonicalName = normalizeName(provider.name);
+        const addressNormalized = provider.address ? normalizeAddress(provider.address) : null;
+        const zip5 = normalizeZip(provider.zip);
+        const isImmigrant = checkImmigrantPatterns(provider.name) ? 1 : 0;
+
+        const result = await execute(`
+          INSERT INTO provider_master (
+            ccis_provider_id, canonical_name, name_display,
+            address_normalized, address_display, city, state, zip, zip5,
+            license_number, capacity, accepts_ccdf, is_immigrant_owned,
+            is_active, first_seen_date, last_verified_date
+          ) VALUES (?, ?, ?, ?, ?, ?, 'NH', ?, ?, ?, ?, 1, ?, 1, datetime('now'), datetime('now'))
+        `, [
+          `LIC-${sourceIdentifier}`,  // Generate CCIS ID from license
+          canonicalName,
+          provider.name,
+          addressNormalized,
           provider.address || null,
-          provider.city || null,
+          provider.city?.toUpperCase() || null,
           provider.zip || null,
-          provider.phone || null,
+          zip5 || null,
+          provider.licenseNumber || null,
           provider.capacity || null,
           isImmigrant,
         ]);
-        
+
+        providerMasterId = result.lastId as number;
+
+        await createSourceLink(
+          providerMasterId,
+          'licensing',
+          sourceIdentifier,
+          provider.name,
+          'created_from_licensing',
+          1.0,
+          []
+        );
+
+        await logMatchAudit(
+          providerMasterId,
+          'licensing',
+          sourceIdentifier,
+          provider.name,
+          'created'
+        );
+
         savedCount++;
       }
+
+      // Also maintain legacy providers table
+      await syncToLegacyProviders(provider);
+
     } catch (error) {
       console.error(`Error saving provider ${provider.name}:`, error);
     }
   }
-  
+
   await saveDb();
   return savedCount;
+}
+
+/**
+ * Sync to legacy providers table for backward compatibility
+ */
+async function syncToLegacyProviders(provider: LicensedProvider): Promise<void> {
+  try {
+    const existing = await query(
+      'SELECT id FROM providers WHERE name = ? OR license_number = ?',
+      [provider.name, provider.licenseNumber || '']
+    );
+
+    if (existing.length > 0) {
+      await execute(`
+        UPDATE providers SET
+          license_number = COALESCE(?, license_number),
+          license_type = COALESCE(?, license_type),
+          license_status = COALESCE(?, license_status),
+          address = COALESCE(?, address),
+          city = COALESCE(?, city),
+          capacity = COALESCE(?, capacity),
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `, [
+        provider.licenseNumber,
+        provider.licenseType,
+        provider.licenseStatus,
+        provider.address,
+        provider.city,
+        provider.capacity,
+        existing[0].id,
+      ]);
+    } else {
+      const isImmigrant = checkImmigrantPatterns(provider.name) ? 1 : 0;
+
+      await execute(`
+        INSERT INTO providers (
+          name, license_number, license_type, license_status,
+          address, city, state, zip, phone, capacity,
+          is_immigrant_owned, accepts_ccdf, notes
+        ) VALUES (?, ?, ?, ?, ?, ?, 'NH', ?, ?, ?, ?, 1, 'Imported from NH Licensing')
+      `, [
+        provider.name,
+        provider.licenseNumber || null,
+        provider.licenseType || null,
+        provider.licenseStatus || null,
+        provider.address || null,
+        provider.city || null,
+        provider.zip || null,
+        provider.phone || null,
+        provider.capacity || null,
+        isImmigrant,
+      ]);
+    }
+  } catch (error) {
+    console.warn(`Warning: Failed to sync to legacy providers table: ${error}`);
+  }
 }
 
 /**

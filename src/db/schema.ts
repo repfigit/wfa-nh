@@ -229,6 +229,119 @@ CREATE TABLE IF NOT EXISTS ingestion_runs (
 CREATE INDEX IF NOT EXISTS idx_ingestion_source ON ingestion_runs(source);
 CREATE INDEX IF NOT EXISTS idx_ingestion_status ON ingestion_runs(status);
 CREATE INDEX IF NOT EXISTS idx_ingestion_started ON ingestion_runs(started_at);
+
+-- Provider Master Table (CCIS-driven authoritative source)
+CREATE TABLE IF NOT EXISTS provider_master (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ccis_provider_id TEXT UNIQUE,
+  canonical_name TEXT NOT NULL,
+  name_display TEXT NOT NULL,
+  address_normalized TEXT,
+  address_display TEXT,
+  city TEXT,
+  state TEXT DEFAULT 'NH',
+  zip TEXT,
+  zip5 TEXT,
+  phone_normalized TEXT,
+  email TEXT,
+  provider_type TEXT,
+  license_number TEXT,
+  capacity INTEGER,
+  accepts_ccdf INTEGER DEFAULT 0,
+  quality_rating TEXT,
+  is_immigrant_owned INTEGER DEFAULT 0,
+  is_active INTEGER DEFAULT 1,
+  first_seen_date TEXT,
+  last_verified_date TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_provider_master_ccis ON provider_master(ccis_provider_id);
+CREATE INDEX IF NOT EXISTS idx_provider_master_name ON provider_master(canonical_name);
+CREATE INDEX IF NOT EXISTS idx_provider_master_city ON provider_master(city);
+CREATE INDEX IF NOT EXISTS idx_provider_master_zip5 ON provider_master(zip5);
+CREATE INDEX IF NOT EXISTS idx_provider_master_active ON provider_master(is_active);
+
+-- Provider Aliases (name variations from different sources)
+CREATE TABLE IF NOT EXISTS provider_aliases (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  provider_master_id INTEGER NOT NULL,
+  alias_name TEXT NOT NULL,
+  alias_normalized TEXT NOT NULL,
+  alias_type TEXT CHECK (alias_type IN ('dba', 'former_name', 'variant', 'vendor_name')),
+  source TEXT,
+  confidence REAL DEFAULT 1.0,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (provider_master_id) REFERENCES provider_master(id),
+  UNIQUE(provider_master_id, alias_normalized)
+);
+
+CREATE INDEX IF NOT EXISTS idx_aliases_master ON provider_aliases(provider_master_id);
+CREATE INDEX IF NOT EXISTS idx_aliases_normalized ON provider_aliases(alias_normalized);
+
+-- Provider Source Links (bridge table to external data sources)
+CREATE TABLE IF NOT EXISTS provider_source_links (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  provider_master_id INTEGER NOT NULL,
+  source_system TEXT NOT NULL CHECK (source_system IN (
+    'ccis', 'licensing', 'transparent_nh', 'das_contracts', 'propublica_990', 'usaspending', 'legacy'
+  )),
+  source_identifier TEXT NOT NULL,
+  source_name TEXT,
+  match_method TEXT,
+  match_score REAL,
+  match_details TEXT,
+  status TEXT DEFAULT 'active',
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (provider_master_id) REFERENCES provider_master(id),
+  UNIQUE(source_system, source_identifier)
+);
+
+CREATE INDEX IF NOT EXISTS idx_source_links_master ON provider_source_links(provider_master_id);
+CREATE INDEX IF NOT EXISTS idx_source_links_source ON provider_source_links(source_system, source_identifier);
+
+-- Pending Matches (manual review queue for low-confidence matches)
+CREATE TABLE IF NOT EXISTS pending_matches (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source_system TEXT NOT NULL,
+  source_identifier TEXT NOT NULL,
+  source_name TEXT,
+  source_address TEXT,
+  source_city TEXT,
+  source_zip TEXT,
+  candidate_provider_id INTEGER,
+  match_score REAL,
+  match_details TEXT,
+  status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected', 'manual_created')),
+  reviewed_by TEXT,
+  reviewed_at TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (candidate_provider_id) REFERENCES provider_master(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_pending_status ON pending_matches(status);
+CREATE INDEX IF NOT EXISTS idx_pending_source ON pending_matches(source_system);
+
+-- Match Audit Log (tracks all matching decisions for transparency)
+CREATE TABLE IF NOT EXISTS match_audit_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  provider_master_id INTEGER,
+  source_system TEXT NOT NULL,
+  source_identifier TEXT NOT NULL,
+  source_name TEXT,
+  action TEXT CHECK (action IN ('matched', 'created', 'rejected', 'manual_link', 'queued_review')),
+  match_score REAL,
+  match_method TEXT,
+  match_details TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (provider_master_id) REFERENCES provider_master(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_master ON match_audit_log(provider_master_id);
+CREATE INDEX IF NOT EXISTS idx_audit_source ON match_audit_log(source_system);
+CREATE INDEX IF NOT EXISTS idx_audit_action ON match_audit_log(action);
 `;
 
 export const seedData = `
