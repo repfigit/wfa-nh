@@ -22,7 +22,11 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DATA_DIR = process.env.VERCEL ? '/tmp/downloads' : path.join(__dirname, '../../data/downloads');
+// Use /tmp in both Vercel and Trigger.dev (and other containerized environments)
+// because other directories are often read-only.
+const DATA_DIR = (process.env.VERCEL || process.env.TRIGGER_SECRET_KEY) 
+  ? '/tmp' 
+  : path.join(__dirname, '../../data/downloads');
 
 const CCIS_URL = 'https://new-hampshire.my.site.com/nhccis/NH_ChildCareSearch';
 
@@ -160,11 +164,17 @@ async function downloadProviderResults(page: Page): Promise<string | null> {
   console.log('Fetching provider data via Visualforce remote action...');
 
   // Ensure download directory exists
-  if (!existsSync(DATA_DIR)) {
-    mkdirSync(DATA_DIR, { recursive: true });
+  let downloadDir = DATA_DIR;
+  if (!existsSync(downloadDir)) {
+    try {
+      mkdirSync(downloadDir, { recursive: true });
+    } catch (e) {
+      console.warn(`Could not create directory ${downloadDir}, using /tmp instead. Error: ${e}`);
+      downloadDir = '/tmp';
+    }
   }
 
-  const downloadPath = path.join(DATA_DIR, 'nhccis-providers.csv');
+  const downloadPath = path.join(downloadDir, 'nhccis-providers.csv');
 
   // Expose functions to receive data from page context
   let resolveData: (data: string) => void;

@@ -955,14 +955,30 @@
       document.getElementById('ingestion-history-body').innerHTML = (data.runs || []).map(r => `<tr><td>${r.source}</td><td>${r.status}</td><td>${r.records_processed}</td><td>${r.records_imported}</td><td>${new Date(r.started_at).toLocaleString()}</td><td><button onclick='alert(JSON.stringify(${JSON.stringify(r.details)}))'>View</button></td></tr>`).join('');
     }
 
-    let currentActiveJob = null;
+    let currentRunId = null;
 
     async function refreshJobStatus() {
       try {
         const res = await fetch(`${API_BASE}/trigger/runs`, { headers: getAuthHeaders() });
         if (!res.ok) return;
         const data = await res.json();
-        const active = (data.runs || []).filter(r => ['EXECUTING','PENDING', 'QUEUED', 'REATTEMPTING'].includes(r.status));
+        const runs = data.runs || [];
+        
+        // Check specific run status if we are tracking one
+        if (currentRunId) {
+          const run = runs.find(r => r.id === currentRunId);
+          if (run) {
+            if (run.status === 'COMPLETED') {
+              completeProgress('ccis', 'Job Completed Successfully!');
+              currentRunId = null; // Stop tracking this specific run
+            } else if (run.status === 'FAILED' || run.status === 'CANCELED') {
+              completeProgress('ccis', `Job Failed: ${run.status}`, true);
+              currentRunId = null; // Stop tracking
+            }
+          }
+        }
+
+        const active = runs.filter(r => ['EXECUTING','PENDING', 'QUEUED', 'REATTEMPTING'].includes(r.status));
         
         currentActiveJob = active.length > 0 ? active[0] : null;
 
@@ -999,8 +1015,8 @@
           }
         });
 
-        // Polling if active
-        if (isAnyActive) {
+        // Polling if active or if we are tracking a specific run that might have finished but we haven't seen it yet
+        if (isAnyActive || currentRunId) {
           setTimeout(refreshJobStatus, 3000);
         }
       } catch (e) { console.error('Job status refresh failed:', e); }
@@ -1028,52 +1044,7 @@
       }
     }
 
-    async function startTransparentNHCrawlIngest(dryRun) {
-      await safeTrigger(async () => {
-        await fetch(`${API_BASE}/trigger/transparent-nh`, { 
-          method: 'POST', 
-          headers: getAuthHeaders(), 
-          body: JSON.stringify({ crawlIngest: true, dryRun }) 
-        });
-        refreshJobStatus();
-      });
-    }
-
-    async function startUSASpendingScraper() {
-      showProgress('usaspending', 'Connecting to USAspending.gov...');
-      await safeTrigger(async () => {
-        updateProgressStatus('usaspending', 'Fetching CCDF awards...');
-        const res = await fetch(`${API_BASE}/trigger/usaspending`, {
-          method: 'POST',
-          headers: getAuthHeaders(),
-          body: JSON.stringify({})
-        });
-        if (!res.ok) {
-          completeProgress('usaspending', 'Failed to fetch', true);
-          throw new Error('Failed to fetch federal awards');
-        }
-        completeProgress('usaspending', 'Federal awards fetched!');
-        refreshJobStatus();
-      });
-    }
-
-    async function startFraudAnalysis() {
-      showProgress('fraud', 'Running pattern analysis...');
-      await safeTrigger(async () => {
-        updateProgressStatus('fraud', 'Analyzing expenditure patterns...');
-        const res = await fetch(`${API_BASE}/trigger/fraud-analysis`, {
-          method: 'POST',
-          headers: getAuthHeaders(),
-          body: JSON.stringify({})
-        });
-        if (!res.ok) {
-          completeProgress('fraud', 'Analysis failed', true);
-          throw new Error('Failed to run fraud analysis');
-        }
-        completeProgress('fraud', 'Analysis complete!');
-        refreshJobStatus();
-      });
-    }
+    // ... (rest of functions)
 
     async function startCCISScraper() {
       showProgress('ccis', 'Connecting to CCIS portal...');
@@ -1093,7 +1064,8 @@
         
         // When running in Trigger.dev, the initial response just gives us the Run ID
         if (data.runId) {
-          completeProgress('ccis', `Job Queued (Run ID: ${data.runId})`);
+          currentRunId = data.runId; // Track this run
+          updateProgressStatus('ccis', `Job Queued (Run ID: ${data.runId.slice(0,8)}...)`);
         } else {
           // Fallback for local execution/direct results
           const count = data.result?.providersImported || 'unknown';
@@ -1143,6 +1115,57 @@
         const data = await res.json();
         const records = data.result?.childcareRecords || 0;
         completeProgress('tnh-current', `Done! ${records.toLocaleString()} records`);
+        refreshJobStatus();
+      });
+    }
+
+    async function startUSASpendingScraper() {
+      showProgress('usaspending', 'Fetching federal awards...');
+      await safeTrigger(async () => {
+        updateProgressStatus('usaspending', 'Querying USAspending API...');
+        const res = await fetch(`${API_BASE}/trigger/usaspending`, {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: JSON.stringify({})
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          completeProgress('usaspending', err.error || 'Failed', true);
+          throw new Error(err.error || 'Failed to start USAspending scraper');
+        }
+        const data = await res.json();
+        // Trigger.dev v3 returns runId
+        if (data.runId) {
+            updateProgressStatus('usaspending', `Job Queued (Run ID: ${data.runId.slice(0,8)}...)`);
+        } else {
+            completeProgress('usaspending', 'Done! Awards updated.');
+        }
+        refreshJobStatus();
+      });
+    }
+
+    async function startFraudAnalysis() {
+      showProgress('fraud', 'Starting pattern analysis...');
+      await safeTrigger(async () => {
+        updateProgressStatus('fraud', 'Running fraud detection algorithms...');
+        const res = await fetch(`${API_BASE}/trigger/fraud-analysis`, {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: JSON.stringify({})
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          completeProgress('fraud', err.error || 'Failed', true);
+          throw new Error(err.error || 'Failed to start fraud analysis');
+        }
+        const data = await res.json();
+        // Trigger.dev v3 returns runId
+        if (data.runId) {
+            updateProgressStatus('fraud', `Job Queued (Run ID: ${data.runId.slice(0,8)}...)`);
+        } else {
+            const count = data.result?.flagsGenerated || 0;
+            completeProgress('fraud', `Done! ${count} flags generated`);
+        }
         refreshJobStatus();
       });
     }

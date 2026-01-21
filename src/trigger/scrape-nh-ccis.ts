@@ -53,25 +53,25 @@ export const scrapeNHCCIS = task({
         error: result.error,
       });
 
-      return {
-        success: result.success,
-        totalFound: result.totalFound,
-        imported: result.imported,
-        updated: result.updated,
-        downloadPath: result.downloadPath,
-        error: result.error,
-      };
+      if (result.success) {
+        return {
+          success: result.success,
+          totalFound: result.totalFound,
+          imported: result.imported,
+          updated: result.updated,
+          downloadPath: result.downloadPath,
+          error: result.error,
+        };
+      } else {
+        // If scraper returned success: false, throw an error to mark the run as failed in Trigger.dev
+        throw new Error(result.error || "Scraper failed without specific error message");
+      }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
       logger.error("NH CCIS scraper failed", { error: errorMessage });
-
-      return {
-        success: false,
-        totalFound: 0,
-        imported: 0,
-        updated: 0,
-        error: errorMessage,
-      };
+      
+      // Re-throw to ensure Trigger.dev marks the run as failed
+      throw error;
     }
   },
 });
