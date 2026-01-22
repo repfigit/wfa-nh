@@ -1,4 +1,4 @@
-import { dbHelpers } from './src/db/database.js';
+import { dbHelpers } from '../../src/db/database.js';
 
 async function testDataSources() {
   try {

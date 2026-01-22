@@ -4,7 +4,7 @@
  */
 
 import { initializeDb, closeDb, IS_LOCAL } from './database.js';
-import { query, execute, saveSqliteDb } from './db-adapter.js';
+import { query, execute } from './db-adapter.js';
 
 export async function seedDatabase(skipInit = false) {
   if (!skipInit) {
@@ -29,7 +29,8 @@ export async function seedDatabase(skipInit = false) {
   await execute('DELETE FROM payments');
   await execute('DELETE FROM contracts');
   await execute('DELETE FROM expenditures');
-  await execute('DELETE FROM providers');
+  // await execute('DELETE FROM providers');
+  await execute('DELETE FROM provider_master');
   await execute('DELETE FROM contractors');
 
   // ========================================
@@ -156,11 +157,11 @@ export async function seedDatabase(skipInit = false) {
   
   for (const p of providers) {
     const id = await runInsert(`
-      INSERT INTO providers (name, dba_name, address, city, state, zip, license_type, capacity, provider_type, 
-        is_immigrant_owned, owner_name, owner_background, language_services, accepts_ccdf, notes)
-      VALUES (?, ?, ?, ?, 'NH', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [p.name, p.dba_name, p.address, p.city, p.zip, p.license_type, p.capacity, p.provider_type,
-        p.is_immigrant_owned, p.owner_name, p.owner_background, p.language_services, p.accepts_ccdf, p.notes]);
+      INSERT INTO provider_master (canonical_name, name_display, address_display, city, state, zip, license_number, capacity, provider_type, 
+        is_immigrant_owned, quality_rating, accepts_ccdf)
+      VALUES (?, ?, ?, ?, 'NH', ?, ?, ?, ?, ?, ?, ?)
+    `, [p.name, p.name, p.address, p.city, p.zip, p.license_type, p.capacity, p.provider_type,
+        p.is_immigrant_owned, 'N/A', p.accepts_ccdf]);
     providerIds[p.name] = id;
     console.log(`  - Added provider: ${p.name} (ID: ${id})`);
   }
@@ -233,10 +234,10 @@ export async function seedDatabase(skipInit = false) {
     if (!providerId) continue;
     
     await runInsert(`
-      INSERT INTO payments (provider_id, fiscal_year, fiscal_month, amount, children_served, 
-        payment_type, funding_source, program_type)
-      VALUES (?, ?, ?, ?, ?, 'CCDF Scholarship', 'Federal CCDF', 'Child Care Subsidy')
-    `, [providerId, payment.fy, payment.month, payment.amount, payment.children]);
+      INSERT INTO payments (provider_master_id, fiscal_year, amount, children_served, 
+        funding_source, description)
+      VALUES (?, ?, ?, ?, 'Federal CCDF', 'CCDF Scholarship')
+    `, [providerId, payment.fy, payment.amount, payment.children]);
   }
   console.log(`  - Added ${payments.length} payment records`);
 
@@ -247,14 +248,14 @@ export async function seedDatabase(skipInit = false) {
 
   // Get providers with payments
   const providerStats = await query(`
-    SELECT p.id, p.name, p.capacity, p.is_immigrant_owned,
+    SELECT p.id, p.canonical_name as name, p.capacity, p.is_immigrant_owned,
       SUM(pay.amount) as total_payments,
       MAX(pay.children_served) as max_children,
       COUNT(pay.id) as payment_count,
       AVG(pay.amount) as avg_payment
-    FROM providers p
-    LEFT JOIN payments pay ON p.id = pay.provider_id
-    GROUP BY p.id, p.name, p.capacity, p.is_immigrant_owned
+    FROM provider_master p
+    LEFT JOIN payments pay ON p.id = pay.provider_master_id
+    GROUP BY p.id, p.canonical_name, p.capacity, p.is_immigrant_owned
   `);
 
   let fraudCount = 0;
@@ -272,13 +273,13 @@ export async function seedDatabase(skipInit = false) {
       const severity = maxChildren > capacity * 1.5 ? 'high' : 'medium';
       
       await runInsert(`
-        INSERT INTO fraud_indicators (provider_id, indicator_type, severity, description, evidence, status)
-        VALUES (?, 'over_capacity', ?, ?, ?, 'open')
+        INSERT INTO fraud_indicators (provider_master_id, indicator_type, severity, description, status)
+        VALUES (?, 'over_capacity', ?, ?, 'open')
       `, [
         p.id,
         severity,
         `Provider "${p.name}" billed for ${maxChildren} children but licensed capacity is only ${capacity} (${overPercent}% over)`,
-        `Max children served: ${maxChildren}, Licensed capacity: ${capacity}`
+        // `Max children served: ${maxChildren}, Licensed capacity: ${capacity}`
       ]);
       fraudCount++;
       console.log(`  - Flagged over-capacity: ${p.name} (${overPercent}% over)`);
@@ -289,12 +290,12 @@ export async function seedDatabase(skipInit = false) {
       const paymentPerCapacity = totalPayments / capacity / 6;
       if (paymentPerCapacity > 1000) {
         await runInsert(`
-          INSERT INTO fraud_indicators (provider_id, indicator_type, severity, description, evidence, status)
-          VALUES (?, 'high_payment_rate', 'medium', ?, ?, 'open')
+          INSERT INTO fraud_indicators (provider_master_id, indicator_type, severity, description, status)
+          VALUES (?, 'high_payment_rate', 'medium', ?, 'open')
         `, [
           p.id,
           `Provider "${p.name}" has unusually high payment rate of $${paymentPerCapacity.toFixed(0)}/child/month`,
-          `Total payments: $${totalPayments.toLocaleString()}, Capacity: ${capacity}`
+          // `Total payments: $${totalPayments.toLocaleString()}, Capacity: ${capacity}`
         ]);
         fraudCount++;
         console.log(`  - Flagged high payment rate: ${p.name}`);
@@ -304,10 +305,10 @@ export async function seedDatabase(skipInit = false) {
     // Check for rapid payment growth
     if (paymentCount >= 6) {
       const firstPayment = await query(`
-        SELECT amount FROM payments WHERE provider_id = ? ORDER BY fiscal_month ASC LIMIT 1
+        SELECT amount FROM payments WHERE provider_master_id = ? ORDER BY id ASC LIMIT 1
       `, [p.id]);
       const lastPayment = await query(`
-        SELECT amount FROM payments WHERE provider_id = ? ORDER BY fiscal_month DESC LIMIT 1
+        SELECT amount FROM payments WHERE provider_master_id = ? ORDER BY id DESC LIMIT 1
       `, [p.id]);
 
       const firstAmount = parseFloat(firstPayment[0]?.amount) || 0;
@@ -318,13 +319,13 @@ export async function seedDatabase(skipInit = false) {
         const severity = lastAmount > firstAmount * 4 ? 'high' : 'medium';
         
         await runInsert(`
-          INSERT INTO fraud_indicators (provider_id, indicator_type, severity, description, evidence, status)
-          VALUES (?, 'rapid_growth', ?, ?, ?, 'open')
+          INSERT INTO fraud_indicators (provider_master_id, indicator_type, severity, description, status)
+          VALUES (?, 'rapid_growth', ?, ?, 'open')
         `, [
           p.id,
           severity,
           `Provider "${p.name}" shows ${growthPercent}% payment growth in 6 months - potential fraud indicator`,
-          `First month: $${firstAmount.toLocaleString()}, Latest month: $${lastAmount.toLocaleString()}`
+          // `First month: $${firstAmount.toLocaleString()}, Latest month: $${lastAmount.toLocaleString()}`
         ]);
         fraudCount++;
         console.log(`  - Flagged rapid growth: ${p.name} (${growthPercent}%)`);
@@ -334,12 +335,12 @@ export async function seedDatabase(skipInit = false) {
     // Flag immigrant-owned providers with high payments for review
     if (isImmigrantOwned && totalPayments > 50000) {
       await runInsert(`
-        INSERT INTO fraud_indicators (provider_id, indicator_type, severity, description, evidence, status)
-        VALUES (?, 'review_recommended', 'low', ?, ?, 'open')
+        INSERT INTO fraud_indicators (provider_master_id, indicator_type, severity, description, status)
+        VALUES (?, 'review_recommended', 'low', ?, 'open')
       `, [
         p.id,
         `Immigrant-owned provider "${p.name}" with significant CCDF payments - recommend compliance review`,
-        `Total payments: $${totalPayments.toLocaleString()}, Owner background flagged for review`
+        // `Total payments: $${totalPayments.toLocaleString()}, Owner background flagged for review`
       ]);
       fraudCount++;
     }
@@ -349,7 +350,7 @@ export async function seedDatabase(skipInit = false) {
 
   // Save database (SQLite only)
   if (IS_LOCAL()) {
-    await saveSqliteDb();
+    // await saveSqliteDb();
   }
   
   // ========================================
@@ -361,11 +362,11 @@ export async function seedDatabase(skipInit = false) {
   
   // Get stats
   const stats = {
-    providers: parseInt((await query('SELECT COUNT(*) as count FROM providers'))[0]?.count) || 0,
+    providers: parseInt((await query('SELECT COUNT(*) as count FROM provider_master'))[0]?.count) || 0,
     payments: parseInt((await query('SELECT COUNT(*) as count FROM payments'))[0]?.count) || 0,
     totalPayments: parseFloat((await query('SELECT SUM(amount) as total FROM payments'))[0]?.total) || 0,
     fraudIndicators: parseInt((await query('SELECT COUNT(*) as count FROM fraud_indicators'))[0]?.count) || 0,
-    immigrantOwned: parseInt((await query('SELECT COUNT(*) as count FROM providers WHERE is_immigrant_owned = 1'))[0]?.count) || 0,
+    immigrantOwned: parseInt((await query('SELECT COUNT(*) as count FROM provider_master WHERE is_immigrant_owned = 1'))[0]?.count) || 0,
   };
 
   console.log(`\nProviders: ${stats.providers} (${stats.immigrantOwned} immigrant-owned)`);

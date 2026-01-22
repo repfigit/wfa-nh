@@ -1,7 +1,7 @@
-import { startServer } from './api/server.js';
-
 import dotenv from 'dotenv';
-dotenv.config({ path: '.env.local' });
+dotenv.config();
+
+import { startServer } from './api/server.js';
 
 console.log(`
 ╔════════════════════════════════════════════════════════════════╗

@@ -10,14 +10,10 @@ import {
   CHILDCARE_KEYWORDS 
 } from '../scraper/nh-das-scraper.js';
 import {
-  detectStructuring,
-  detectDuplicates,
-  analyzeVendorConcentration,
   runFullFraudAnalysis,
 } from '../analyzer/fraud-detector.js';
 import {
   scrapeFiscalYear,
-  scrapeRecentYears,
   getAvailableFiscalYears,
   scrapeCurrentFiscalYear,
   scrapeAllHistoricalYears,
@@ -131,12 +127,12 @@ app.get('/api/fraud-indicators', asyncHandler(async (req, res) => {
 
 app.get('/api/data-sources', asyncHandler(async (req, res) => {
   await ensureInitialized();
-  res.json(await dbHelpers.getDataSources());
+  res.json({ sources: await dbHelpers.getDataSources() });
 }));
 
 app.get('/api/federal/summary', asyncHandler(async (req, res) => {
   await ensureInitialized();
-  const summary = await query('SELECT fiscal_year, COUNT(*) as award_count, SUM(amount) as total_amount FROM expenditures WHERE source_url LIKE "USAspending:%" GROUP BY fiscal_year ORDER BY fiscal_year DESC');
+  const summary = await query('SELECT fiscal_year, COUNT(*) as award_count, SUM(amount) as total_amount FROM expenditures WHERE source_url LIKE "%usaspending%" GROUP BY fiscal_year ORDER BY fiscal_year DESC');
   res.json({ 
     totalFederalAmount: summary.reduce((s: any, r: any) => s + (r.total_amount || 0), 0), 
     totalAwards: summary.reduce((s: any, r: any) => s + (r.award_count || 0), 0), 
@@ -146,17 +142,7 @@ app.get('/api/federal/summary', asyncHandler(async (req, res) => {
 
 app.get('/api/federal/awards', asyncHandler(async (req, res) => {
   await ensureInitialized();
-  if (req.query.refresh === 'true') {
-    // Refresh requires auth
-    const expectedKey = process.env.ADMIN_API_KEY;
-    const apiKey = req.headers['x-api-key'];
-    if (!expectedKey || apiKey !== expectedKey) {
-      return res.status(401).json({ error: 'Unauthorized', message: 'Valid API key required for refresh' });
-    }
-    const result = await scrapeUSASpending();
-    return res.json(result);
-  }
-  const awards = await query('SELECT * FROM expenditures WHERE source_url LIKE "USAspending:%" LIMIT 50');
+  const awards = await query('SELECT * FROM expenditures WHERE source_url LIKE "%usaspending%" LIMIT 50');
   res.json({ awards });
 }));
 
@@ -189,18 +175,6 @@ app.patch('/api/fraud-indicators/:id', requireAuth, asyncHandler(async (req, res
   await execute(`UPDATE fraud_indicators SET ${updateParts.join(', ')} WHERE id = ?`, params);
   const results = await query('SELECT * FROM fraud_indicators WHERE id = ?', [id]);
   results.length > 0 ? res.json(results[0]) : res.status(404).json({ error: 'Not found' });
-}));
-
-app.post('/api/trigger/transparent-nh', requireAuth, asyncHandler(async (req, res) => {
-  await ensureInitialized();
-  const handle = await tasks.trigger('scrape-transparent-nh', req.body);
-  res.json({ success: true, runId: handle.id });
-}));
-
-app.get('/api/trigger/runs', requireAuth, asyncHandler(async (req, res) => {
-  await ensureInitialized();
-  const list = await runs.list({ limit: 10 });
-  res.json({ runs: list.data });
 }));
 
 app.get('/api/ingestion/runs', requireAuth, asyncHandler(async (req, res) => {
@@ -301,10 +275,65 @@ app.post('/api/trigger/transparent-nh-current', requireAuth, asyncHandler(async 
   }
 }));
 
+app.get('/api/admin/sources', requireAuth, asyncHandler(async (req, res) => {
+  await ensureInitialized();
+  const tables = await query("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'source_%'");
+  res.json({ tables: tables.map(t => t.name) });
+}));
+
+app.get('/api/admin/sources/:table', requireAuth, asyncHandler(async (req, res) => {
+  await ensureInitialized();
+  const table = req.params.table as string;
+  if (!table.startsWith('source_')) return res.status(403).json({ error: 'Access denied' });
+  
+  const page = parseInt(req.query.page as string || '1', 10);
+  const limit = parseInt(req.query.limit as string || '100', 10);
+  const offset = (page - 1) * limit;
+  
+  // Dynamic filtering
+  const filters: Record<string, string> = {};
+  Object.keys(req.query).forEach(key => {
+    if (key.startsWith('filter_')) {
+      const col = key.replace('filter_', '');
+      filters[col] = req.query[key] as string;
+    }
+  });
+
+  let whereClause = '';
+  const params: any[] = [];
+  
+  const filterKeys = Object.keys(filters);
+  if (filterKeys.length > 0) {
+    whereClause = ' WHERE ' + filterKeys.map(col => {
+      params.push(`%${filters[col]}%`);
+      return `"${col}" LIKE ?`;
+    }).join(' AND ');
+  }
+
+  // Get total count for pagination
+  const countResult = await query(`SELECT COUNT(*) as count FROM "${table}"${whereClause}`, params);
+  const totalCount = countResult[0]?.count || 0;
+
+  // Get data
+  const rows = await query(`SELECT * FROM "${table}"${whereClause} LIMIT ? OFFSET ?`, [...params, limit, offset]);
+  
+  res.json({ 
+    table, 
+    rows,
+    pagination: {
+      totalCount,
+      totalPages: Math.ceil(totalCount / limit),
+      currentPage: page,
+      limit
+    }
+  });
+}));
+
 // Catch-all
 app.use('/api', (req, res) => {
   res.status(404).json({ error: 'Not Found', message: `API route not found: ${req.method} ${req.originalUrl}` });
 });
+
 
 // Error Handling
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {

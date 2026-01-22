@@ -470,12 +470,27 @@
       border-radius: 50%;
       animation: spin 1s linear infinite;
     }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    .active-jobs-list {
+    .pagination {
       display: flex;
-      flex-direction: column;
-      gap: 0.5rem;
+      justify-content: center;
+      align-items: center;
+      gap: 1rem;
+      margin-top: 1rem;
+      padding: 1rem;
     }
+    .filter-input {
+      width: 100%;
+      padding: 0.3rem;
+      font-size: 0.75rem;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      margin-top: 0.25rem;
+    }
+    #source-top-scrollbar::-webkit-scrollbar { height: 8px; }
+    #source-top-scrollbar::-webkit-scrollbar-track { background: var(--bg); }
+    #source-top-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e0; border-radius: 4px; }
+    #source-top-scrollbar::-webkit-scrollbar-thumb:hover { background: #a0aec0; }
+    .header-content span { font-weight: 600; margin-bottom: 4px; }
     .active-job-item {
       background: rgba(255,255,255,0.1);
       border-radius: 6px;
@@ -507,7 +522,7 @@
     <a href="#" data-view="payments">Payments</a>
     <a href="#" data-view="fraud">Fraud Indicators</a>
     <a href="#" data-view="sources">Data Sources</a>
-    <a href="#" data-view="tools">Admin</a>
+    <a href="#" data-view="admin">Admin</a>
   </nav>
   
   <main>
@@ -586,6 +601,46 @@
       </div>
     </div>
     
+    <!-- Source Data Browser View -->
+    <div id="sources-view" class="view">
+      
+      <!-- Source Metadata Cards -->
+      <div class="card">
+        <div class="card-header"><h2>Data Sources</h2></div>
+        <div class="card-body"><div class="data-sources" id="data-sources-list"></div></div>
+      </div>
+    
+      <!-- Source Data Browser (Combined) -->
+      <div class="card">
+        <div class="card-header">
+           <h2>Raw Source Data</h2>
+            <div style="display:flex; gap:0.5rem; align-items: center;">
+              <select id="source-table-limit" style="width: auto; font-size: 0.8rem;" onchange="loadSourceTableData(true)">
+                <option value="10">10 per page</option>
+                <option value="20" selected>20 per page</option>
+                <option value="50">50 per page</option>
+                <option value="100">100 per page</option>
+              </select>
+              <select id="source-table-select" onchange="loadSourceTableData(true)">
+
+               <option value="">Loading tables...</option>
+             </select>
+             <button class="btn btn-sm" onclick="loadSourceTableData()">Load Data</button>
+           </div>
+        </div>
+        <div class="card-body" id="source-table-container">
+          <div id="source-table-pagination-top" style="margin-bottom:0.5rem;"></div>
+          <div id="source-top-scrollbar" style="overflow-x: auto; overflow-y: hidden; height: 20px; display: none;">
+            <div id="source-top-scrollbar-content" style="height: 20px;"></div>
+          </div>
+          <div id="source-table-scroll-wrapper" style="overflow-x: auto;">
+            <p style="color:var(--text-light); text-align:center;">Select a table to view raw data.</p>
+          </div>
+          <div id="source-table-pagination-bottom" style="margin-top:0.5rem;"></div>
+        </div>
+      </div>
+    </div>
+
     <!-- Payments View -->
     <div id="payments-view" class="view">
       <div class="search-box">
@@ -630,7 +685,7 @@
     </div>
     
     <!-- Admin Panel View -->
-    <div id="tools-view" class="view">
+    <div id="admin-view" class="view">
       <div id="admin-login-view">
         <div class="card" style="max-width: 500px; margin: 2rem auto;">
           <div class="card-header"><h2>Admin Authentication</h2></div>
@@ -755,7 +810,6 @@
                 <h4 style="font-size: 0.875rem; margin-bottom: 0.5rem;">Database Maintenance</h4>
                 <div style="display: flex; flex-direction: column; gap: 0.5rem;">
                   <button class="btn btn-sm btn-outline" onclick="confirmInitDb()" style="color: var(--danger); border-color: var(--danger);">Initialize / Reset Schema</button>
-                  <button class="btn btn-sm btn-outline" onclick="seedSampleData()">Seed Sample Data</button>
                 </div>
               </div>
               <div style="flex: 1; min-width: 250px; background: var(--bg); padding: 1rem; border-radius: 6px;">
@@ -880,32 +934,232 @@
     });
     
     function showView(viewName) {
-      const validViews = ['dashboard', 'providers', 'payments', 'fraud', 'sources', 'tools'];
-      if (!validViews.includes(viewName)) viewName = 'dashboard';
+      const validViews = ['dashboard', 'providers', 'payments', 'fraud', 'sources', 'admin'];
+      if (!validViews.includes(viewName)) return;
 
-      document.querySelectorAll('nav a').forEach(a => a.classList.remove('active'));
-      const link = document.querySelector(`nav a[data-view="${viewName}"]`);
-      if (link) link.classList.add('active');
-      
       document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-      const view = document.getElementById(`${viewName}-view`);
-      if (view) {
-        view.classList.add('active');
-      } else {
-        console.error(`View element not found: ${viewName}-view`);
+      document.getElementById(`${viewName}-view`).classList.add('active');
+      
+      document.querySelectorAll('nav a').forEach(a => {
+        a.classList.toggle('active', a.getAttribute('data-view') === viewName);
+      });
+
+      switch(viewName) {
+        case 'dashboard': loadDashboard(); break;
+        case 'providers': loadProviders(); break;
+        case 'payments': loadPayments(); break;
+        case 'fraud': loadFraud(); break;
+        case 'sources': loadDataSources(); loadSourceTables(); break;
       }
       
-      if (viewName === 'tools') checkAdminStatus();
+      if (viewName === 'admin') checkAdminStatus();
       
       // Trigger data loading for specific views if not already loaded
       switch(viewName) {
         case 'providers': loadProviders(); break;
         case 'payments': loadPayments(); break;
         case 'fraud': loadFraudIndicators(); break;
-        case 'sources': loadDataSources(); break;
+        case 'sources': loadDataSources(); loadSourceTables(); break;
       }
     }
     
+    let sourceTableState = {
+      page: 1,
+      limit: 20,
+      filters: {}
+    };
+
+    async function loadSourceTables() {
+      const key = getApiKey();
+      if (!key) {
+        const select = document.getElementById('source-table-select');
+        if (select) select.innerHTML = '<option value="">Admin Login Required</option>';
+        return;
+      }
+      try {
+        const res = await fetch(`${API_BASE}/admin/sources`, { headers: getAuthHeaders() });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: res.statusText }));
+          throw new Error(err.error || `HTTP ${res.status}`);
+        }
+        const data = await res.json();
+        const select = document.getElementById('source-table-select');
+        if (!data.tables || data.tables.length === 0) {
+          select.innerHTML = '<option value="">No source tables found</option>';
+          return;
+        }
+        select.innerHTML = '<option value="">Select a source table...</option>' +
+          data.tables.map(t => `<option value="${t}">${t}</option>`).join('');
+      } catch (e) {
+          console.error(e);
+          document.getElementById('source-table-select').innerHTML = '<option value="">Error: ' + (e.message || 'Failed to load') + '</option>';
+      }
+    }
+
+    function updateSourceFilter(column, value) {
+      sourceTableState.filters[column] = value;
+      sourceTableState.page = 1; // Reset to page 1 on filter change
+      loadSourceTableData();
+    }
+
+    function changeSourcePage(delta) {
+      sourceTableState.page += delta;
+      loadSourceTableData();
+    }
+
+    function renderPagination(p) {
+      return `
+        <div class="pagination">
+          <button class="btn btn-sm btn-outline" ${p.currentPage <= 1 ? 'disabled' : ''} onclick="changeSourcePage(-1)">Previous</button>
+          <span style="font-size:0.875rem;">Page <strong>${p.currentPage}</strong> of <strong>${p.totalPages}</strong> (${p.totalCount} total records)</span>
+          <button class="btn btn-sm btn-outline" ${p.currentPage >= p.totalPages ? 'disabled' : ''} onclick="changeSourcePage(1)">Next</button>
+        </div>
+      `;
+    }
+
+    async function loadSourceTableData(reset = false) {
+      const table = document.getElementById('source-table-select').value;
+      if (!table) return;
+      
+      const limitSelect = document.getElementById('source-table-limit');
+      sourceTableState.limit = parseInt(limitSelect.value, 10);
+
+      if (reset) {
+        sourceTableState.page = 1;
+        sourceTableState.filters = {};
+      }
+
+      const container = document.getElementById('source-table-container');
+      const paginationTop = document.getElementById('source-table-pagination-top');
+      const paginationBottom = document.getElementById('source-table-pagination-bottom');
+      const wrapper = document.getElementById('source-table-scroll-wrapper');
+      const topScroll = document.getElementById('source-top-scrollbar');
+      const topScrollContent = document.getElementById('source-top-scrollbar-content');
+
+      // Loading state
+      wrapper.innerHTML = '<p style="text-align:center;padding:2rem;"><span class="spinner"></span> Loading data...</p>';
+      paginationTop.innerHTML = '';
+      paginationBottom.innerHTML = '';
+      topScroll.style.display = 'none';
+      
+      try {
+        const queryParams = new URLSearchParams({
+          page: sourceTableState.page,
+          limit: sourceTableState.limit
+        });
+        
+        Object.keys(sourceTableState.filters).forEach(col => {
+          if (sourceTableState.filters[col]) {
+            queryParams.append(`filter_${col}`, sourceTableState.filters[col]);
+          }
+        });
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
+
+        let res;
+        try {
+          res = await fetch(`${API_BASE}/admin/sources/${table}?${queryParams.toString()}`, {
+            headers: getAuthHeaders(),
+            signal: controller.signal
+          });
+        } finally {
+          clearTimeout(timeoutId);
+        }
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: res.statusText }));
+          throw new Error(err.error || `HTTP ${res.status}`);
+        }
+        const data = await res.json();
+
+        if (!data.rows) {
+          throw new Error(data.error || 'No data returned from server');
+        }
+
+        if (data.rows.length === 0 && sourceTableState.page === 1 && Object.keys(sourceTableState.filters).length === 0) {
+          wrapper.innerHTML = '<p style="text-align:center;padding:2rem;">No records found in this table.</p>';
+          return;
+        }
+        
+        const cols = data.rows.length > 0 ? Object.keys(data.rows[0]) : Object.keys(sourceTableState.filters);
+        const p = data.pagination;
+        const paginationHtml = renderPagination(p);
+        
+        paginationTop.innerHTML = paginationHtml;
+        paginationBottom.innerHTML = paginationHtml;
+
+        let tableHtml = '<table><thead><tr>';
+        cols.forEach(c => {
+          tableHtml += `
+            <th>
+              <div class="header-content">
+                <span>${c}</span>
+                <input type="text" class="filter-input" placeholder="Filter..." 
+                  value="${sourceTableState.filters[c] || ''}" 
+                  onkeyup="if(event.key==='Enter') updateSourceFilter('${c}', this.value)"
+                  onblur="updateSourceFilter('${c}', this.value)">
+              </div>
+            </th>`;
+        });
+        tableHtml += '</tr></thead><tbody>';
+        
+        if (data.rows.length === 0) {
+          tableHtml += `<tr><td colspan="${cols.length}" style="text-align:center;padding:2rem;color:var(--text-light);">No results matching your filters.</td></tr>`;
+        } else {
+          tableHtml += data.rows.map(row => `<tr>${cols.map(c => `<td>${row[c] || ''}</td>`).join('')}</tr>`).join('');
+        }
+        tableHtml += '</tbody></table>';
+        wrapper.innerHTML = tableHtml;
+
+        // Sync Top Scrollbar
+        setTimeout(() => {
+          const tableEl = wrapper.querySelector('table');
+          if (tableEl && tableEl.offsetWidth > wrapper.offsetWidth) {
+            topScroll.style.display = 'block';
+            topScrollContent.style.width = tableEl.offsetWidth + 'px';
+            
+            // Link scroll positions
+            topScroll.onscroll = () => { wrapper.scrollLeft = topScroll.scrollLeft; };
+            wrapper.onscroll = () => { topScroll.scrollLeft = wrapper.scrollLeft; };
+          } else {
+            topScroll.style.display = 'none';
+          }
+        }, 100);
+
+      } catch (e) {
+        const msg = e.name === 'AbortError' ? 'Request timed out. The server may be slow or unavailable.' : e.message;
+        wrapper.innerHTML = `<p style="color:var(--danger);padding:2rem;">Error: ${msg}</p>`;
+      }
+    }
+
+    async function loadDataSources() {
+      const container = document.getElementById('data-sources-list');
+      container.innerHTML = '<div class="loading">Loading data sources...</div>';
+      try {
+        const res = await fetch(`${API_BASE}/data-sources`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (!data.sources || data.sources.length === 0) {
+          container.innerHTML = '<p style="color:var(--text-light);">No data sources configured.</p>';
+          return;
+        }
+        container.innerHTML = data.sources.map(s => `
+          <div class="source-card">
+            <h4>${s.name}</h4>
+            <p style="font-size:0.8rem; margin-bottom:0.5rem;">${s.description}</p>
+            <div style="font-size:0.75rem; color:var(--text-light);">
+              <div style="margin-bottom:0.25rem;"><strong>URL:</strong> <a href="${s.url}" target="_blank">${s.url}</a></div>
+              <div><strong>Update Frequency:</strong> ${s.frequency}</div>
+              <div><strong>Last Updated:</strong> ${s.last_updated ? new Date(s.last_updated).toLocaleDateString() : 'Never'}</div>
+            </div>
+          </div>
+        `).join('');
+      } catch (e) {
+        container.innerHTML = `<div class="error">Failed to load data sources: ${e.message}</div>`;
+      }
+    }
+
     function openModal(id) { document.getElementById(id).classList.add('active'); }
     function closeModal(id) { document.getElementById(id).classList.remove('active'); }
     
@@ -922,7 +1176,7 @@
         const fed = await federalRes.json();
         renderFederalFunding(fed);
         document.getElementById('stats-grid').innerHTML = `<div class="stat-card"><h3>Total Providers</h3><div class="value">${data.total_providers}</div></div><div class="stat-card"><h3>CCDF Payments</h3><div class="value">${formatCurrency(data.total_payments)}</div></div><div class="stat-card"><h3>Fraud Flags</h3><div class="value">${data.fraud_indicators_count}</div></div>`;
-        document.querySelector('#top-providers tbody').innerHTML = data.top_providers.map(p => `<tr><td class="clickable" onclick="showProviderDetail(${p.id})">${p.name}</td><td>${p.city}</td><td>${p.provider_type}</td><td>${p.capacity}</td><td>${capacityStatus(p.max_children, p.capacity)}</td><td class="amount">${formatCurrency(p.total_payments)}</td><td>${p.fraud_count}</td></tr>`).join('');
+        document.querySelector('#top-providers tbody').innerHTML = data.top_providers.map(p => `<tr><td class="clickable" onclick="showProviderDetail(${p.id})">${p.canonical_name}</td><td>${p.city}</td><td>${p.provider_type}</td><td>${p.capacity}</td><td class="amount">${formatCurrency(p.total_payments)}</td><td>${p.fraud_count}</td></tr>`).join('');
       } catch (e) { console.error(e); }
     }
 
@@ -938,9 +1192,38 @@
     async function loadProviders() {
       const res = await fetch(`${API_BASE}/providers`);
       const data = await res.json();
-      document.querySelector('#providers-table tbody').innerHTML = data.map(p => `<tr><td class="clickable" onclick="showProviderDetail(${p.id})">${p.name}</td><td>${p.owner_name}</td><td>${p.city}</td><td>${p.provider_type}</td><td>${p.capacity}</td><td>${p.language_services}</td><td>${formatCurrency(p.total_payments)}</td><td>${p.fraud_count}</td></tr>`).join('');
+      document.querySelector('#providers-table tbody').innerHTML = data.map(p => `<tr><td class="clickable" onclick="showProviderDetail(${p.id})">${p.canonical_name}</td><td>${p.city}</td><td>${p.provider_type}</td><td>${p.capacity}</td><td>${formatCurrency(p.total_payments || 0)}</td><td>${p.fraud_count || 0}</td></tr>`).join('');
     }
 
+    async function showProviderDetail(id) {
+      const res = await fetch(`${API_BASE}/providers/${id}`);
+      const p = await res.json();
+      const content = `
+        <div class="provider-detail">
+          <h2>${p.canonical_name}</h2>
+          <div class="grid">
+            <div>
+              <p><strong>City:</strong> ${p.city}</p>
+              <p><strong>Type:</strong> ${p.provider_type}</p>
+              <p><strong>Capacity:</strong> ${p.capacity}</p>
+            </div>
+            <div>
+              <p><strong>CCDF ID:</strong> ${p.ccis_provider_id}</p>
+              <p><strong>Quality:</strong> ${p.quality_rating || 'N/A'}</p>
+              <p><strong>Active:</strong> ${p.is_active ? 'Yes' : 'No'}</p>
+            </div>
+          </div>
+          <h3>Payments</h3>
+          <table><thead><tr><th>Date</th><th>Amount</th><th>Source</th></tr></thead><tbody>${p.payments.map(pay => `<tr><td>${pay.payment_date}</td><td>${formatCurrency(pay.amount)}</td><td>${pay.funding_source}</td></tr>`).join('')}</tbody></table>
+        </div>
+      `;
+      // showModal(content);
+      openModal('provider-modal');
+      document.getElementById('provider-modal-title').textContent = p.name_display || p.canonical_name;
+      document.getElementById('provider-modal-body').innerHTML = content;
+    }
+
+    /*
     async function showProviderDetail(id) {
       openModal('provider-modal');
       const res = await fetch(`${API_BASE}/providers/${id}`);
@@ -948,6 +1231,7 @@
       document.getElementById('provider-modal-title').textContent = p.name;
       document.getElementById('provider-modal-body').innerHTML = `<div class="detail-grid"><div><label>City</label>${p.city}</div><div><label>Payments</label>${formatCurrency(p.total_payments)}</div></div>`;
     }
+    */
 
     async function loadIngestionHistory() {
       const res = await fetch(`${API_BASE}/ingestion/runs`, { headers: getAuthHeaders() });

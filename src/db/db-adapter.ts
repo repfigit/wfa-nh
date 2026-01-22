@@ -5,102 +5,60 @@
  */
 
 import { createClient, Client } from '@libsql/client';
-import initSqlJs, { Database as SqlJsDatabase } from 'sql.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DB_PATH = path.join(__dirname, '../../data/childcare.db');
 
-// Detect environment - prefer Turso if URL is set, fallback to SQLite
-let useTurso = false;
+// Detect environment - prefer Turso if URL is set
+let useTurso = true;
 
 // For backward compatibility
-export const IS_TURSO = () => useTurso;
-export const IS_LOCAL = () => !useTurso;
+export const IS_TURSO = () => true;
+export const IS_LOCAL = () => false;
 
 // Database instances
 let tursoClient: Client | null = null;
-let sqliteDb: SqlJsDatabase | null = null;
-let SQL: any = null;
 
 /**
  * Initialize the database connection
  */
 export async function initDb(): Promise<void> {
-  // Try Turso first if URL is set
-  if (process.env.TURSO_DATABASE_URL) {
-    try {
-      if (!tursoClient) {
-        tursoClient = createClient({
-          url: process.env.TURSO_DATABASE_URL!,
-          authToken: process.env.TURSO_AUTH_TOKEN,
-        });
-      }
-      // Test the connection with a simple query
-      await tursoClient.execute('SELECT 1');
-      useTurso = true;
-      return;
-    } catch (error) {
-      console.warn('Turso connection failed, falling back to SQLite:', error);
-    }
-  }
-  
-  // Fallback to SQLite
-  if (!SQL) {
-    SQL = await initSqlJs();
-  }
-  
-  if (!sqliteDb) {
-    try {
-      if (fs.existsSync(DB_PATH)) {
-        const fileBuffer = fs.readFileSync(DB_PATH);
-        sqliteDb = new SQL.Database(fileBuffer);
-      } else {
-        sqliteDb = new SQL.Database();
-      }
-    } catch (err) {
-      sqliteDb = new SQL.Database();
-    }
-  }
-}
+  const url = process.env.TURSO_DATABASE_URL;
+  const authToken = process.env.TURSO_AUTH_TOKEN;
 
-/**
- * Get SQLite database instance (local only)
- */
-export async function getSqliteDb(): Promise<SqlJsDatabase> {
-  if (!sqliteDb) {
-    await initDb();
+  if (!url) {
+    // Fallback to local file if no Turso URL
+    // console.warn('TURSO_DATABASE_URL not set, falling back to local SQLite file: local.db');
+    useTurso = false;
+    tursoClient = createClient({
+      url: 'file:local.db',
+    });
+    return;
   }
-  return sqliteDb!;
-}
 
-/**
- * Save SQLite database to file (local only)
- */
-export async function saveSqliteDb(): Promise<void> {
-  if (useTurso || !sqliteDb) return;
-  
-  const data = sqliteDb.export();
-  const buffer = Buffer.from(data);
-  
-  const dataDir = path.dirname(DB_PATH);
-  if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true });
+  if (!tursoClient) {
+    tursoClient = createClient({
+      url,
+      authToken,
+    });
   }
   
-  fs.writeFileSync(DB_PATH, buffer);
+  // Test connection
+  try {
+    await tursoClient.execute('SELECT 1');
+    useTurso = true;
+  } catch (error) {
+    console.error('Failed to connect to Turso:', error);
+    throw error;
+  }
 }
 
 /**
  * Close database connection
  */
 export function closeDb(): void {
-  if (sqliteDb) {
-    sqliteDb.close();
-    sqliteDb = null;
-  }
   // Turso client doesn't need explicit closing
 }
 
@@ -111,26 +69,13 @@ export async function query<T = any>(
   sql: string,
   params: any[] = []
 ): Promise<T[]> {
-  if (useTurso) {
-    const result = await tursoClient!.execute({
-      sql,
-      args: params,
-    });
-    return result.rows as T[];
-  } else {
-    const db = await getSqliteDb();
-    const stmt = db.prepare(sql);
-    if (params.length > 0) {
-      stmt.bind(params);
-    }
-    
-    const results: T[] = [];
-    while (stmt.step()) {
-      results.push(stmt.getAsObject() as T);
-    }
-    stmt.free();
-    return results;
-  }
+  if (!tursoClient) await initDb();
+  
+  const result = await tursoClient!.execute({
+    sql,
+    args: params.map(p => p === undefined ? null : p),
+  });
+  return result.rows as T[];
 }
 
 /**
@@ -140,24 +85,16 @@ export async function execute(
   sql: string,
   params: any[] = []
 ): Promise<{ lastId?: number; changes?: number }> {
-  if (useTurso) {
-    const result = await tursoClient!.execute({
-      sql,
-      args: params,
-    });
-    return {
-      lastId: Number(result.lastInsertRowid) || undefined,
-      changes: result.rowsAffected,
-    };
-  } else {
-    const db = await getSqliteDb();
-    db.run(sql, params);
-    
-    const lastIdResult = db.exec('SELECT last_insert_rowid() as id');
-    const lastId = lastIdResult[0]?.values[0]?.[0] as number | undefined;
-    
-    return { lastId, changes: db.getRowsModified() };
-  }
+  if (!tursoClient) await initDb();
+
+  const result = await tursoClient!.execute({
+    sql,
+    args: params.map(p => p === undefined ? null : p),
+  });
+  return {
+    lastId: Number(result.lastInsertRowid) || undefined,
+    changes: result.rowsAffected,
+  };
 }
 
 /**
@@ -165,29 +102,25 @@ export async function execute(
  * Handles multiple statements separated by semicolons
  */
 export async function executeRaw(sql: string): Promise<void> {
-  if (useTurso) {
-    // Split into individual statements and execute
-    const statements = sql
-      .split(';')
-      .map(s => s.trim())
-      .filter(s => s.length > 0)
-      // Remove comment-only lines from each statement
-      .map(s => s.split('\n').filter(line => !line.trim().startsWith('--')).join('\n').trim())
-      .filter(s => s.length > 0);
-    
-    for (let i = 0; i < statements.length; i++) {
-      const stmt = statements[i];
-      try {
-        await tursoClient!.execute(stmt);
-      } catch (err: any) {
-        console.error(`SQL Error on statement ${i + 1}:`, err.message);
-        console.error('Statement was:', stmt);
-        // Don't throw, just log - schema creation should be idempotent
-      }
+  if (!tursoClient) await initDb();
+
+  // Split into individual statements and execute
+  const statements = sql
+    .split(';')
+    .map(s => s.trim())
+    .filter(s => s.length > 0)
+    // Remove comment-only lines from each statement
+    .map(s => s.split('\n').filter(line => !line.trim().startsWith('--')).join('\n').trim())
+    .filter(s => s.length > 0);
+  
+  for (let i = 0; i < statements.length; i++) {
+    const stmt = statements[i];
+    try {
+      await tursoClient!.execute(stmt);
+    } catch (err: any) {
+      console.error(`SQL Error on statement ${i + 1}:`, err.message);
+      console.error('Statement was:', stmt);
     }
-  } else {
-    const db = await getSqliteDb();
-    db.run(sql);
   }
 }
 
@@ -197,27 +130,20 @@ export async function executeRaw(sql: string): Promise<void> {
 export async function executeBatch(
   statements: { sql: string; args?: any[] }[]
 ): Promise<void> {
-  if (useTurso) {
-    await tursoClient!.batch(
-      statements.map(s => ({
-        sql: s.sql,
-        args: s.args || [],
-      }))
-    );
-  } else {
-    const db = await getSqliteDb();
-    for (const stmt of statements) {
-      db.run(stmt.sql, stmt.args || []);
-    }
-  }
+  if (!tursoClient) await initDb();
+
+  await tursoClient!.batch(
+    statements.map(s => ({
+      sql: s.sql,
+      args: (s.args || []).map(p => p === undefined ? null : p),
+    }))
+  );
 }
 
 export default {
   IS_TURSO,
   IS_LOCAL,
   initDb,
-  getSqliteDb,
-  saveSqliteDb,
   closeDb,
   query,
   execute,
