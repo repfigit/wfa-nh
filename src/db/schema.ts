@@ -157,6 +157,7 @@ CREATE TABLE IF NOT EXISTS ingestion_runs (
 );
 
 -- 6. BROWSEABLE SOURCE LANDING TABLES
+-- Columns match the CSV export from NH CCIS website exactly
 CREATE TABLE IF NOT EXISTS source_ccis (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   program_name TEXT,

@@ -36,9 +36,9 @@ export async function bridgeCCIS(documentId: number) {
       const zip5 = normalizeZip(raw.zip);
       const cityNormalized = raw.city?.toUpperCase().trim() || null;
 
-      const providerType = raw.license_type
-        ? (PROGRAM_TYPES[raw.license_type] || raw.license_type.toLowerCase())
-        : null;
+      const providerType = raw.record_type
+        ? (PROGRAM_TYPES[raw.record_type] || raw.record_type.toLowerCase())
+        : (raw.license_type || null);
 
       const ccisId = raw.provider_number || `CCIS-${canonicalName.substring(0, 20).replace(/\s+/g, '-')}`;
 
@@ -54,13 +54,13 @@ export async function bridgeCCIS(documentId: number) {
           UPDATE provider_master SET
             canonical_name = ?, name_display = ?, address_normalized = ?, address_display = ?,
             city = ?, zip = ?, zip5 = ?, phone_normalized = ?, email = ?,
-            provider_type = ?, capacity = ?, accepts_ccdf = ?, quality_rating = ?,
+            provider_type = ?, capacity = ?, quality_rating = ?,
             last_verified_date = datetime('now'), updated_at = datetime('now')
           WHERE id = ?
         `, [
           canonicalName, raw.program_name, addressNormalized, raw.street,
           cityNormalized, raw.zip, zip5, phoneNormalized, raw.email,
-          providerType, parseInt(raw.capacity) || null, raw.accepts_scholarship?.toLowerCase() === 'yes' ? 1 : 0, raw.gsq_step,
+          providerType, parseInt(raw.capacity) || null, raw.gsq_step,
           masterId
         ]);
         updated++;
@@ -69,12 +69,12 @@ export async function bridgeCCIS(documentId: number) {
           INSERT INTO provider_master (
             ccis_provider_id, canonical_name, name_display, address_normalized, address_display,
             city, state, zip, zip5, phone_normalized, email, provider_type, capacity,
-            accepts_ccdf, quality_rating, is_active, first_seen_date, last_verified_date
-          ) VALUES (?, ?, ?, ?, ?, ?, 'NH', ?, ?, ?, ?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'))
+            quality_rating, is_active, first_seen_date, last_verified_date
+          ) VALUES (?, ?, ?, ?, ?, ?, 'NH', ?, ?, ?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'))
         `, [
           ccisId, canonicalName, raw.program_name, addressNormalized, raw.street,
           cityNormalized, raw.zip, zip5, phoneNormalized, raw.email,
-          providerType, parseInt(raw.capacity) || null, raw.accepts_scholarship?.toLowerCase() === 'yes' ? 1 : 0, raw.gsq_step
+          providerType, parseInt(raw.capacity) || null, raw.gsq_step
         ]);
         
         const masterId = result.lastId!;

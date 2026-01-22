@@ -179,7 +179,7 @@ export const dbHelpers = {
     
     // Return hardcoded sources if no data yet
     return [
-      { name: 'NH CCIS Provider Directory', type: 'scraped', url: 'https://nh.childcare-info.com/', frequency: 'Weekly', description: 'Official list of licensed childcare providers in New Hampshire.' },
+      { name: 'NH CCIS Provider Directory', type: 'scraped', url: 'https://new-hampshire.my.site.com/nhccis/NH_ChildCareSearch', frequency: 'Weekly', description: 'Official list of licensed childcare providers in New Hampshire.' },
       { name: 'TransparentNH', type: 'scraped', url: 'https://www.transparentnh.nh.gov/', frequency: 'Weekly', description: 'State expenditure data including childcare scholarship payments.' },
       { name: 'USAspending.gov', type: 'api', url: 'https://www.usaspending.gov/', frequency: 'Daily', description: 'Federal CCDF grant awards and sub-awards to New Hampshire.' },
     ];

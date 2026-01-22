@@ -213,6 +213,25 @@ app.get('/api/scraper/transparent-nh/years', asyncHandler(async (req, res) => {
 
 // --- Scraper Trigger Endpoints ---
 
+// Get status of recent Trigger.dev runs
+app.get('/api/trigger/runs', requireAuth, asyncHandler(async (req, res) => {
+  try {
+    const recentRuns = await runs.list({ limit: 10 });
+    res.json({
+      runs: recentRuns.data.map(run => ({
+        id: run.id,
+        taskIdentifier: run.taskIdentifier,
+        status: run.status,
+        createdAt: run.createdAt,
+        updatedAt: run.updatedAt,
+        finishedAt: run.finishedAt,
+      }))
+    });
+  } catch (error: any) {
+    res.json({ runs: [], error: error.message });
+  }
+}));
+
 // Trigger CCIS Provider Directory scraper
 app.post('/api/trigger/ccis', requireAuth, asyncHandler(async (req, res) => {
   await ensureInitialized();
