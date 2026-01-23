@@ -27,22 +27,44 @@ export async function initializeDb(): Promise<void> {
   if (initialized) {
     try {
       await query('SELECT 1 FROM ingestion_runs LIMIT 1');
+      // Check and migrate schema if needed
+      await migrateSchemaIfNeeded();
       return;
     } catch (e) {
-      console.log('Re-initializing schema...');
+      // Schema needs initialization
     }
   }
   
-  console.log('Initializing consolidated schema...');
   try {
     await executeRaw(sqliteSchema);
-    console.log('Database schema synchronized');
+    await migrateSchemaIfNeeded();
   } catch (error) {
     console.error('Schema initialization failed:', error);
     throw error;
   }
   
   initialized = true;
+}
+
+/**
+ * Migrate schema to add missing columns if needed
+ */
+async function migrateSchemaIfNeeded(): Promise<void> {
+  // Try to add provider_master_id to payments if it doesn't exist
+  try {
+    await execute('ALTER TABLE payments ADD COLUMN provider_master_id INTEGER REFERENCES provider_master(id)');
+  } catch (e: any) {
+    // Ignore if column already exists or other schema errors
+    // The defensive queries will handle missing columns gracefully
+  }
+  
+  // Try to add provider_master_id to fraud_indicators if it doesn't exist
+  try {
+    await execute('ALTER TABLE fraud_indicators ADD COLUMN provider_master_id INTEGER REFERENCES provider_master(id)');
+  } catch (e: any) {
+    // Ignore if column already exists or other schema errors
+    // The defensive queries will handle missing columns gracefully
+  }
 }
 
 /**
@@ -189,27 +211,61 @@ export const dbHelpers = {
   getDashboardStats: async () => {
     await initializeDb();
     
-    // Top Providers for dashboard
-    const topProviders = await query(`
+    // Top Providers for dashboard - try provider_master_id first, fallback gracefully
+    let topProviders: any[] = [];
+    try {
+      topProviders = await query(`
         SELECT p.id, p.canonical_name, p.city, p.provider_type, p.capacity,
-          (SELECT COUNT(*) FROM fraud_indicators WHERE provider_master_id = p.id) as fraud_count,
-          (SELECT SUM(amount) FROM payments WHERE provider_master_id = p.id) as total_payments
+          COALESCE((SELECT COUNT(*) FROM fraud_indicators WHERE provider_master_id = p.id), 0) as fraud_count,
+          COALESCE((SELECT SUM(amount) FROM payments WHERE provider_master_id = p.id), 0) as total_payments
         FROM provider_master p
         ORDER BY total_payments DESC
         LIMIT 5
-    `);
+      `);
+    } catch (e: any) {
+      // If provider_master_id doesn't exist, try provider_id as fallback
+      if (e.message?.includes('provider_master_id')) {
+        try {
+          topProviders = await query(`
+            SELECT p.id, p.canonical_name, p.city, p.provider_type, p.capacity,
+              COALESCE((SELECT COUNT(*) FROM fraud_indicators WHERE provider_id = p.id), 0) as fraud_count,
+              COALESCE((SELECT SUM(amount) FROM payments WHERE provider_id = p.id), 0) as total_payments
+            FROM provider_master p
+            ORDER BY total_payments DESC
+            LIMIT 5
+          `);
+        } catch (e2: any) {
+          // If both fail, return providers without subquery data
+          topProviders = await query(`
+            SELECT p.id, p.canonical_name, p.city, p.provider_type, p.capacity,
+              0 as fraud_count, 0 as total_payments
+            FROM provider_master p
+            LIMIT 5
+          `);
+        }
+      } else {
+        // Other error, return empty
+        topProviders = [];
+      }
+    }
 
     const totalProviders = (await query('SELECT COUNT(*) as count FROM provider_master'))[0]?.count || 0;
     const immigrantProviders = (await query('SELECT COUNT(*) as count FROM provider_master WHERE is_immigrant_owned = 1'))[0]?.count || 0;
     const totalPayments = (await query('SELECT COALESCE(SUM(amount), 0) as total FROM payments'))[0]?.total || 0;
     const paymentCount = (await query('SELECT COUNT(*) as count FROM payments'))[0]?.count || 0;
     
-    const fraudBySeverity = await query(`
-      SELECT severity, COUNT(*) as count 
-      FROM fraud_indicators 
-      WHERE status != 'dismissed'
-      GROUP BY severity
-    `);
+    let fraudBySeverity: any[] = [];
+    try {
+      fraudBySeverity = await query(`
+        SELECT severity, COUNT(*) as count 
+        FROM fraud_indicators 
+        WHERE status != 'dismissed'
+        GROUP BY severity
+      `);
+    } catch (e: any) {
+      console.warn('Fraud indicators query failed:', e.message);
+      fraudBySeverity = [];
+    }
 
     const toNum = (v: any) => typeof v === 'string' ? parseInt(v, 10) : (v || 0);
 

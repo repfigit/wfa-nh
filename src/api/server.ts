@@ -6,11 +6,6 @@ const PORT = process.env.PORT || 3000;
 export async function startServer() {
   await initializeDb();
   app.listen(PORT, () => {
-    console.log(`
-╔════════════════════════════════════════════════════════════════╗
-║     NH Childcare Payments Tracker                              ║
-║     Local Server running at http://localhost:${PORT}           ║
-╚════════════════════════════════════════════════════════════════╝
-    `);
+    console.log(`✓ Server running at http://localhost:${PORT}`);
   });
 }

@@ -132,7 +132,7 @@ app.get('/api/data-sources', asyncHandler(async (req, res) => {
 
 app.get('/api/federal/summary', asyncHandler(async (req, res) => {
   await ensureInitialized();
-  const summary = await query('SELECT fiscal_year, COUNT(*) as award_count, SUM(amount) as total_amount FROM expenditures WHERE source_url LIKE "%usaspending%" GROUP BY fiscal_year ORDER BY fiscal_year DESC');
+  const summary = await query('SELECT fiscal_year, COUNT(*) as award_count, SUM(amount) as total_amount FROM expenditures WHERE source_url LIKE ? GROUP BY fiscal_year ORDER BY fiscal_year DESC', ['%usaspending%']);
   res.json({ 
     totalFederalAmount: summary.reduce((s: any, r: any) => s + (r.total_amount || 0), 0), 
     totalAwards: summary.reduce((s: any, r: any) => s + (r.award_count || 0), 0), 
@@ -142,7 +142,7 @@ app.get('/api/federal/summary', asyncHandler(async (req, res) => {
 
 app.get('/api/federal/awards', asyncHandler(async (req, res) => {
   await ensureInitialized();
-  const awards = await query('SELECT * FROM expenditures WHERE source_url LIKE "%usaspending%" LIMIT 50');
+  const awards = await query('SELECT * FROM expenditures WHERE source_url LIKE ? LIMIT 50', ['%usaspending%']);
   res.json({ awards });
 }));
 
@@ -355,7 +355,18 @@ app.use('/api', (req, res) => {
 
 
 // Error Handling
+let lastError: { message: string; timestamp: number } | null = null;
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
-  console.error('API Error:', err);
-  res.status(500).json({ error: err.message || 'Internal server error' });
+  const errorMessage = err.message || 'Internal server error';
+  const now = Date.now();
+  
+  // Suppress duplicate errors within 2 seconds
+  if (lastError && lastError.message === errorMessage && (now - lastError.timestamp) < 2000) {
+    // Skip logging duplicate errors
+  } else {
+    console.error(`API Error [${req.method} ${req.path}]:`, errorMessage);
+    lastError = { message: errorMessage, timestamp: now };
+  }
+  
+  res.status(500).json({ error: errorMessage });
 });
