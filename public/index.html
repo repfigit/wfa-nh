@@ -1270,12 +1270,13 @@
                 updateProgressStatus('ccis', meta.status);
               }
 
-              if (run.status === 'COMPLETED') {
+              const runStatus = (run.status || '').toUpperCase();
+              if (runStatus === 'COMPLETED') {
                 const finalStatus = meta.status || `Done! ${run.output?.totalFound || ''} providers updated`;
                 completeProgress('ccis', finalStatus);
                 currentRunId = null;
-              } else if (run.status === 'FAILED' || run.status === 'CANCELED') {
-                completeProgress('ccis', meta.status || `Job Failed: ${run.status}`, true);
+              } else if (runStatus === 'FAILED' || runStatus === 'CANCELED') {
+                completeProgress('ccis', meta.status || `Job ${run.status}`, true);
                 currentRunId = null;
               }
             }
@@ -1283,18 +1284,19 @@
             // Fall back to list-based tracking
             const run = runs.find(r => r.id === currentRunId);
             if (run) {
-              if (run.status === 'COMPLETED') {
+              const runStatus = (run.status || '').toUpperCase();
+              if (runStatus === 'COMPLETED') {
                 completeProgress('ccis', 'Job Completed Successfully!');
                 currentRunId = null;
-              } else if (run.status === 'FAILED' || run.status === 'CANCELED') {
-                completeProgress('ccis', `Job Failed: ${run.status}`, true);
+              } else if (runStatus === 'FAILED' || runStatus === 'CANCELED') {
+                completeProgress('ccis', `Job ${run.status}`, true);
                 currentRunId = null;
               }
             }
           }
         }
 
-        const active = runs.filter(r => ['EXECUTING','PENDING', 'QUEUED', 'REATTEMPTING'].includes(r.status));
+        const active = runs.filter(r => ['EXECUTING','PENDING', 'QUEUED', 'REATTEMPTING'].includes((r.status || '').toUpperCase()));
 
         currentActiveJob = active.length > 0 ? active[0] : null;
 
