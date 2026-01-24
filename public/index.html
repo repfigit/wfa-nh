@@ -1247,47 +1247,84 @@
         if (!res.ok) return;
         const data = await res.json();
         const runs = data.runs || [];
-        
+
         // Check specific run status if we are tracking one
         if (currentRunId) {
-          const run = runs.find(r => r.id === currentRunId);
-          if (run) {
-            if (run.status === 'COMPLETED') {
-              completeProgress('ccis', 'Job Completed Successfully!');
-              currentRunId = null; // Stop tracking this specific run
-            } else if (run.status === 'FAILED' || run.status === 'CANCELED') {
-              completeProgress('ccis', `Job Failed: ${run.status}`, true);
-              currentRunId = null; // Stop tracking
+          // Fetch detailed run info with metadata
+          try {
+            const runRes = await fetch(`${API_BASE}/trigger/runs/${currentRunId}`, { headers: getAuthHeaders() });
+            if (runRes.ok) {
+              const run = await runRes.json();
+              const meta = run.metadata || {};
+              const progress = meta.progress || 0;
+              const status = meta.status || run.status;
+
+              // Update progress bar width
+              const progressBar = document.querySelector('#progress-ccis .progress-bar');
+              if (progressBar) {
+                progressBar.style.width = `${progress}%`;
+              }
+
+              // Update status text
+              if (meta.status) {
+                updateProgressStatus('ccis', meta.status);
+              }
+
+              if (run.status === 'COMPLETED') {
+                const finalStatus = meta.status || `Done! ${run.output?.totalFound || ''} providers updated`;
+                completeProgress('ccis', finalStatus);
+                currentRunId = null;
+              } else if (run.status === 'FAILED' || run.status === 'CANCELED') {
+                completeProgress('ccis', meta.status || `Job Failed: ${run.status}`, true);
+                currentRunId = null;
+              }
+            }
+          } catch (e) {
+            // Fall back to list-based tracking
+            const run = runs.find(r => r.id === currentRunId);
+            if (run) {
+              if (run.status === 'COMPLETED') {
+                completeProgress('ccis', 'Job Completed Successfully!');
+                currentRunId = null;
+              } else if (run.status === 'FAILED' || run.status === 'CANCELED') {
+                completeProgress('ccis', `Job Failed: ${run.status}`, true);
+                currentRunId = null;
+              }
             }
           }
         }
 
         const active = runs.filter(r => ['EXECUTING','PENDING', 'QUEUED', 'REATTEMPTING'].includes(r.status));
-        
+
         currentActiveJob = active.length > 0 ? active[0] : null;
 
         // Update active jobs panel
         const panel = document.getElementById('active-jobs-panel');
         if (panel) {
           panel.style.display = currentActiveJob ? 'block' : 'none';
-          document.getElementById('active-jobs-list').innerHTML = active.map(r => `
+          document.getElementById('active-jobs-list').innerHTML = active.map(r => {
+            const meta = r.metadata || {};
+            const progress = meta.progress || (r.status === 'EXECUTING' ? 50 : 10);
+            const statusText = meta.status || r.status;
+            return `
             <div class="active-job-item">
               <div style="display:flex; justify-content:space-between; margin-bottom:0.5rem;">
                 <strong>${r.taskIdentifier}</strong>
                 <span class="badge">${r.status}</span>
               </div>
               <div class="progress-bar-bg">
-                <div class="progress-bar-fill" style="width: ${r.status === 'EXECUTING' ? '60%' : '20%'}"></div>
+                <div class="progress-bar-fill" style="width: ${progress}%"></div>
               </div>
-              <div style="font-size:0.7rem; color:rgba(255,255,255,0.8)">Started: ${new Date(r.createdAt).toLocaleString()}</div>
+              <div style="font-size:0.75rem; color:rgba(255,255,255,0.9); margin-top:0.25rem;">${statusText}</div>
+              <div style="font-size:0.7rem; color:rgba(255,255,255,0.6)">Started: ${new Date(r.createdAt).toLocaleString()}</div>
             </div>
-          `).join('');
+          `}).join('');
         }
 
         // Disable/Enable trigger buttons
         const triggerButtons = document.querySelectorAll('.scraper-card button, .card-header button[onclick^="start"]');
         const isAnyActive = active.length > 0;
-        
+
         triggerButtons.forEach(btn => {
           btn.disabled = isAnyActive;
           if (isAnyActive) {
@@ -1301,7 +1338,7 @@
 
         // Polling if active or if we are tracking a specific run that might have finished but we haven't seen it yet
         if (isAnyActive || currentRunId) {
-          setTimeout(refreshJobStatus, 3000);
+          setTimeout(refreshJobStatus, 2000); // Poll every 2 seconds for better responsiveness
         }
       } catch (e) { console.error('Job status refresh failed:', e); }
     }

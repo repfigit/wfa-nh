@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@libsql/client": "^0.17.0",
+    "@trigger.dev/build": "^4.3.3",
     "@trigger.dev/sdk": "4.3.3",
     "@types/puppeteer": "^5.4.7",
     "@vercel/blob": "^2.0.0",

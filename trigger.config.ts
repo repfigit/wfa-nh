@@ -1,5 +1,5 @@
 import { defineConfig } from "@trigger.dev/sdk";
-import { playwright } from "@trigger.dev/build/extensions/playwright";
+import { puppeteer } from "@trigger.dev/build/extensions/puppeteer";
 
 export default defineConfig({
   project: "proj_jgarnbajxtqeftxmdqxa",
@@ -19,6 +19,7 @@ export default defineConfig({
     // Mark these as external so they get installed via npm in the container
     external: [
       "sql.js",
+      "puppeteer",
     ],
     // Extensions for platform-specific modules
     extensions: [
@@ -36,10 +37,22 @@ export default defineConfig({
           }
         },
       },
-      playwright({
-        browsers: ["chromium"],
-        headless: true,
-      }),
+      // Puppeteer extension installs Chrome and sets PUPPETEER_EXECUTABLE_PATH
+      puppeteer(),
+      // Ensure download directory exists
+      {
+        name: "download-dir",
+        onBuildComplete: async (context) => {
+          if (context.target === "deploy") {
+            context.addLayer({
+              id: "download-dir-setup",
+              commands: [
+                "mkdir -p /app/data/downloads",
+              ],
+            });
+          }
+        },
+      },
     ],
   },
 });

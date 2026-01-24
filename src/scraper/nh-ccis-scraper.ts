@@ -1,7 +1,8 @@
 import { query, execute, executeBatch } from '../db/db-adapter.js';
-import { chromium, Browser, Page, BrowserContext } from 'playwright';
-import { existsSync, writeFileSync, mkdirSync, readFileSync, unlinkSync, statSync } from 'fs';
-import { resolve, dirname } from 'path';
+import puppeteer from 'puppeteer';
+import type { Browser, Page, CDPSession } from 'puppeteer';
+import { existsSync, writeFileSync, mkdirSync, readFileSync, unlinkSync, statSync, readdirSync } from 'fs';
+import { resolve, dirname, join } from 'path';
 
 // Interfaces
 interface ScrapeResult {
@@ -35,60 +36,78 @@ interface CCISProvider {
 }
 
 const CCIS_URL = 'https://new-hampshire.my.site.com/nhccis/NH_ChildCareSearch';
-const CSV_PATH = resolve(process.cwd(), 'data/downloads/nhccis-providers.csv');
+// Use /tmp for downloads in containerized environments, fallback to cwd for local dev
+const DOWNLOAD_DIR = process.env.TRIGGER_ENV ? '/tmp/downloads' : resolve(process.cwd(), 'data/downloads');
+const CSV_PATH = resolve(DOWNLOAD_DIR, 'nhccis-providers.csv');
 
 /**
- * Launch Playwright browser
+ * Launch Puppeteer browser with download support
  */
-async function launchBrowser(): Promise<{ browser: Browser; context: BrowserContext }> {
-  const browser = await chromium.launch({
+async function launchBrowser(): Promise<Browser> {
+  // Use PUPPETEER_EXECUTABLE_PATH if set (Trigger.dev container)
+  const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+
+  const browser = await puppeteer.launch({
     headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+    ...(executablePath && { executablePath }),
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-gpu',
+      '--disable-software-rasterizer',
+    ]
   });
-  
-  const context = await browser.newContext();
-  return { browser, context };
+
+  return browser;
 }
 
 /**
- * Download CSV file from the "Download Provider Results" link using Playwright
+ * Wait for a file to appear in directory with timeout
  */
-async function downloadCSVFile(page: Page, downloadDir: string): Promise<string> {
-  console.log('Setting up download handling...');
-  
-  await page.waitForLoadState('networkidle', { timeout: 30000 });
-  await page.waitForTimeout(2000);
-  
-  // Intercept ALL responses for CSV data
-  const csvData: Array<{ url: string; buffer: Buffer }> = [];
-  page.on('response', async (response) => {
-    const url = response.url();
-    const contentType = response.headers()['content-type'] || '';
-    const contentDisposition = response.headers()['content-disposition'] || '';
-    
-    const isCSV = contentType.includes('csv') || 
-                  contentType.includes('text/csv') ||
-                  contentDisposition.includes('.csv') ||
-                  contentDisposition.includes('attachment') ||
-                  url.includes('.csv') || 
-                  url.includes('download') || 
-                  url.includes('export');
-    
-    if (isCSV && response.status() === 200) {
-      try {
-        const buffer = await response.body();
-        if (buffer.length > 100) {
-          console.log(`✓ Intercepted CSV: ${url} (${buffer.length} bytes)`);
-          csvData.push({ url, buffer });
-        }
-      } catch (e) {
-        // Ignore
+async function waitForDownload(downloadDir: string, timeoutMs: number = 60000): Promise<string | null> {
+  const startTime = Date.now();
+  const checkInterval = 500;
+
+  while (Date.now() - startTime < timeoutMs) {
+    const files = readdirSync(downloadDir);
+    // Look for CSV files, ignore .crdownload partial downloads
+    const csvFiles = files.filter(f => f.endsWith('.csv') && !f.endsWith('.crdownload'));
+
+    if (csvFiles.length > 0) {
+      const filePath = join(downloadDir, csvFiles[0]);
+      // Verify file has content
+      const stats = statSync(filePath);
+      if (stats.size > 100) {
+        return filePath;
       }
     }
+
+    await new Promise(resolve => setTimeout(resolve, checkInterval));
+  }
+
+  return null;
+}
+
+/**
+ * Download CSV file from the "Download Provider Results" link using CDP
+ */
+async function downloadCSVFile(page: Page, downloadDir: string): Promise<string> {
+  console.log('Setting up CDP download handling...');
+
+  // Create CDP session for download handling
+  const client = await page.createCDPSession();
+
+  // Enable CDP download behavior - this is the key for headless downloads
+  await client.send('Page.setDownloadBehavior', {
+    behavior: 'allow',
+    downloadPath: downloadDir,
   });
-  
-  // Set up download event handler (will be recreated per attempt)
-  
+
+  console.log(`CDP download path set to: ${downloadDir}`);
+
+  await new Promise(resolve => setTimeout(resolve, 2000));
+
   // Find the download link
   console.log('Finding download link...');
   const linkInfo = await page.evaluate(() => {
@@ -109,95 +128,150 @@ async function downloadCSVFile(page: Page, downloadDir: string): Promise<string>
     }
     return null;
   });
-  
+
   if (!linkInfo) {
     throw new Error('Could not find "Download Provider Results" link');
   }
-  
+
   console.log(`Found link: ${linkInfo.tag} - "${linkInfo.text}"`);
-  
+
   const filePath = resolve(downloadDir, 'nhccis-providers.csv');
-  const downloadLink = linkInfo.id
-    ? page.locator(`#${linkInfo.id}`).first()
-    : page.locator(`text="${linkInfo.text}"`).first();
-  
-  await downloadLink.waitFor({ state: 'visible', timeout: 10000 });
-  
+
+  // Clean existing files in download dir to detect new download
+  const existingFiles = readdirSync(downloadDir);
+  for (const file of existingFiles) {
+    if (file.endsWith('.csv') || file.endsWith('.crdownload')) {
+      unlinkSync(join(downloadDir, file));
+    }
+  }
+
   // First click: "Warm-up" - triggers server-side CSV generation
   console.log('Warm-up click: Triggering CSV generation...');
-  await downloadLink.click({ timeout: 10000 });
-  console.log('Warm-up click completed, waiting 30 seconds for server to prepare CSV...');
-  await page.waitForTimeout(30000);
-  
-  // Second click: Actual download (should work immediately after warm-up)
-  console.log('Download click: Attempting to download prepared CSV...');
-  const mainDownloadPromise = page.waitForEvent('download', { timeout: 35000 });
-  await downloadLink.click({ timeout: 10000 });
-  
-  // Wait for download event
-  try {
-    const download = await mainDownloadPromise;
-    const filename = download.suggestedFilename();
-    if (filename) {
-      await download.saveAs(filePath);
-      console.log(`✓ Downloaded via download event: ${filePath}`);
-      return filePath;
+  await page.evaluate(() => {
+    const links = Array.from(document.querySelectorAll('a, button'));
+    for (const el of links) {
+      const text = (el as HTMLElement).textContent?.trim() || '';
+      if (text.includes('Download Provider Results') || text.includes('Download Your Search Results')) {
+        (el as HTMLElement).click();
+        return;
+      }
     }
-  } catch (e: any) {
-    console.log(`No download event (${e.message}), checking intercepted responses...`);
-  }
-  
-  // Wait a bit more for responses
-  await page.waitForTimeout(5000);
-  
-  // Check intercepted CSV data
-  if (csvData.length > 0) {
-    console.log(`Found ${csvData.length} CSV response(s)`);
-    const largest = csvData.reduce((prev, curr) => 
-      curr.buffer.length > prev.buffer.length ? curr : prev
-    );
-    writeFileSync(filePath, largest.buffer);
-    console.log(`✓ Saved CSV from intercepted response: ${filePath} (${largest.buffer.length} bytes)`);
+  });
+
+  console.log('Warm-up click completed, waiting 35 seconds for server to prepare CSV...');
+  await new Promise(resolve => setTimeout(resolve, 35000));
+
+  // Second click: Actual download with CDP handling
+  console.log('Download click: Starting download...');
+
+  // Track download progress via CDP events
+  let downloadStarted = false;
+  client.on('Page.downloadWillBegin', (event: any) => {
+    console.log(`Download starting: ${event.suggestedFilename || 'unknown'}`);
+    downloadStarted = true;
+  });
+
+  client.on('Page.downloadProgress', (event: any) => {
+    if (event.state === 'completed') {
+      console.log('CDP reports download completed');
+    }
+  });
+
+  // Click the download link
+  await page.evaluate(() => {
+    const links = Array.from(document.querySelectorAll('a, button'));
+    for (const el of links) {
+      const text = (el as HTMLElement).textContent?.trim() || '';
+      if (text.includes('Download Provider Results') || text.includes('Download Your Search Results')) {
+        (el as HTMLElement).click();
+        return;
+      }
+    }
+  });
+
+  // Wait for download to complete - check for file appearing
+  console.log('Waiting for download to complete...');
+  const downloadedFile = await waitForDownload(downloadDir, 60000);
+
+  if (downloadedFile) {
+    // Rename to expected filename if different
+    if (downloadedFile !== filePath) {
+      const content = readFileSync(downloadedFile);
+      writeFileSync(filePath, content);
+      if (downloadedFile !== filePath) {
+        unlinkSync(downloadedFile);
+      }
+    }
+    const stats = statSync(filePath);
+    console.log(`✓ Downloaded via CDP: ${filePath} (${stats.size} bytes)`);
+    await client.detach();
     return filePath;
   }
-  
-  // Check if file was downloaded to default location
+
+  // Fallback: try response interception
+  console.log('CDP download not detected, trying response interception...');
+
+  let csvBuffer: Buffer | null = null;
+  const responseHandler = async (response: any) => {
+    const headers = response.headers();
+    const contentType = headers['content-type'] || '';
+    const contentDisposition = headers['content-disposition'] || '';
+
+    const isCSV = contentType.includes('csv') ||
+                  contentType.includes('text/csv') ||
+                  contentDisposition.includes('.csv') ||
+                  contentDisposition.includes('attachment');
+
+    if (isCSV && response.status() === 200) {
+      try {
+        const buffer = await response.buffer();
+        if (buffer.length > 100) {
+          console.log(`✓ Intercepted CSV response (${buffer.length} bytes)`);
+          csvBuffer = buffer;
+        }
+      } catch (e) {
+        // Response body may already be consumed
+      }
+    }
+  };
+
+  page.on('response', responseHandler);
+
+  // Click again for interception attempt
+  await page.evaluate(() => {
+    const links = Array.from(document.querySelectorAll('a, button'));
+    for (const el of links) {
+      const text = (el as HTMLElement).textContent?.trim() || '';
+      if (text.includes('Download Provider Results') || text.includes('Download Your Search Results')) {
+        (el as HTMLElement).click();
+        return;
+      }
+    }
+  });
+
+  await new Promise(resolve => setTimeout(resolve, 15000));
+  page.off('response', responseHandler);
+
+  if (csvBuffer !== null) {
+    writeFileSync(filePath, csvBuffer);
+    const stats = statSync(filePath);
+    console.log(`✓ Saved from intercepted response: ${filePath} (${stats.size} bytes)`);
+    await client.detach();
+    return filePath;
+  }
+
+  // Final check for file
   if (existsSync(filePath)) {
     const stats = statSync(filePath);
     if (stats.size > 100) {
       console.log(`✓ Found downloaded file: ${filePath} (${stats.size} bytes)`);
+      await client.detach();
       return filePath;
     }
   }
-  
-  // Fallback: Try one more time if first attempt didn't work
-  console.log('Fallback: Trying one more download attempt...');
-  const fallbackDownloadPromise = page.waitForEvent('download', { timeout: 35000 });
-  await downloadLink.click({ timeout: 10000 });
-  await page.waitForTimeout(10000);
-  
-  try {
-    const download = await fallbackDownloadPromise;
-    const filename = download.suggestedFilename();
-    if (filename) {
-      await download.saveAs(filePath);
-      console.log(`✓ Downloaded via fallback attempt: ${filePath}`);
-      return filePath;
-    }
-  } catch (e: any) {
-    // Ignore
-  }
-  
-  if (csvData.length > 0) {
-    const largest = csvData.reduce((prev, curr) => 
-      curr.buffer.length > prev.buffer.length ? curr : prev
-    );
-    writeFileSync(filePath, largest.buffer);
-    console.log(`✓ Saved CSV from fallback intercepted response: ${filePath} (${largest.buffer.length} bytes)`);
-    return filePath;
-  }
-  
-  throw new Error(`Could not download CSV after 3 attempts. Intercepted ${csvData.length} responses`);
+
+  await client.detach();
+  throw new Error(`Could not download CSV. CDP download started: ${downloadStarted}, files in dir: ${readdirSync(downloadDir).join(', ') || 'none'}`);
 }
 
 /**
@@ -343,10 +417,11 @@ export async function scrapeCCIS(): Promise<ScrapeResult> {
     console.log('Starting NH CCIS scraper...');
     console.log(`Target URL: ${CCIS_URL}`);
     
-    const downloadDir = dirname(CSV_PATH);
-    if (!existsSync(downloadDir)) {
-      mkdirSync(downloadDir, { recursive: true });
+    // Use DOWNLOAD_DIR which handles container vs local environments
+    if (!existsSync(DOWNLOAD_DIR)) {
+      mkdirSync(DOWNLOAD_DIR, { recursive: true });
     }
+    console.log(`Download directory: ${DOWNLOAD_DIR}`);
     
     // Delete any existing CSV files to ensure fresh download
     if (existsSync(CSV_PATH)) {
@@ -354,24 +429,23 @@ export async function scrapeCCIS(): Promise<ScrapeResult> {
       console.log('Deleted existing CSV file to ensure fresh download');
     }
     
-    // Download fresh CSV from website using Playwright
+    // Download fresh CSV from website using Puppeteer
     console.log('Downloading CSV from NH CCIS website...');
-    const { browser: browserInstance, context } = await launchBrowser();
-    browser = browserInstance;
-    
-    const page = await context.newPage();
-    
+    browser = await launchBrowser();
+
+    const page = await browser.newPage();
+
     // Set a reasonable viewport
-    await page.setViewportSize({ width: 1280, height: 800 });
-    
+    await page.setViewport({ width: 1280, height: 800 });
+
     console.log('Navigating to NH CCIS...');
-    await page.goto(CCIS_URL, { waitUntil: 'networkidle', timeout: 60000 });
-    
+    await page.goto(CCIS_URL, { waitUntil: 'networkidle2', timeout: 60000 });
+
     // Wait a bit for page to fully render
-    await page.waitForTimeout(2000);
-    
-    // Download the CSV file (saves directly to CSV_PATH)
-    await downloadCSVFile(page, downloadDir);
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // Download the CSV file (saves directly to DOWNLOAD_DIR)
+    await downloadCSVFile(page, DOWNLOAD_DIR);
     
     // Parse the CSV file
     const providers = parseCSVFile(CSV_PATH);
@@ -406,6 +480,13 @@ export async function scrapeCCIS(): Promise<ScrapeResult> {
 }
 
 /**
+ * Convert empty string to null for database insertion
+ */
+function emptyToNull(value: string): string | null {
+  return value === '' ? null : value;
+}
+
+/**
  * Load providers into the source_ccis table
  */
 async function loadProvidersIntoDatabase(providers: CCISProvider[]): Promise<void> {
@@ -427,10 +508,10 @@ async function loadProvidersIntoDatabase(providers: CCISProvider[]): Promise<voi
         accepts_scholarship, accredited, capacity, age_groups, enrollment
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       args: [
-        row.program_name, row.status, row.phone, row.email, row.region, row.county,
-        row.street, row.city, row.state, row.zip,
-        row.record_type, row.gsq_step, row.provider_number, row.license_date, row.license_type,
-        row.accepts_scholarship, row.accredited, row.capacity, row.age_groups, row.enrollment
+        emptyToNull(row.program_name), emptyToNull(row.status), emptyToNull(row.phone), emptyToNull(row.email), emptyToNull(row.region), emptyToNull(row.county),
+        emptyToNull(row.street), emptyToNull(row.city), emptyToNull(row.state), emptyToNull(row.zip),
+        emptyToNull(row.record_type), emptyToNull(row.gsq_step), emptyToNull(row.provider_number), emptyToNull(row.license_date), emptyToNull(row.license_type),
+        emptyToNull(row.accepts_scholarship), emptyToNull(row.accredited), emptyToNull(row.capacity), emptyToNull(row.age_groups), emptyToNull(row.enrollment)
       ]
     })));
     insertedCount += batch.length;

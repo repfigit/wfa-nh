@@ -225,10 +225,31 @@ app.get('/api/trigger/runs', requireAuth, asyncHandler(async (req, res) => {
         createdAt: run.createdAt,
         updatedAt: run.updatedAt,
         finishedAt: run.finishedAt,
+        metadata: run.metadata,
       }))
     });
   } catch (error: any) {
     res.json({ runs: [], error: error.message });
+  }
+}));
+
+// Get details of a specific run including metadata
+app.get('/api/trigger/runs/:runId', requireAuth, asyncHandler(async (req, res) => {
+  try {
+    const runId = req.params.runId as string;
+    const run = await runs.retrieve(runId);
+    res.json({
+      id: run.id,
+      taskIdentifier: run.taskIdentifier,
+      status: run.status,
+      createdAt: run.createdAt,
+      updatedAt: run.updatedAt,
+      finishedAt: run.finishedAt,
+      metadata: run.metadata,
+      output: run.output,
+    });
+  } catch (error: any) {
+    res.status(404).json({ error: error.message });
   }
 }));
 
