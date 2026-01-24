@@ -73,7 +73,7 @@ export async function query<T = any>(
   
   const result = await tursoClient!.execute({
     sql,
-    args: params.map(p => p === undefined ? null : p),
+    args: params.map(p => (p === undefined || p === '') ? null : p),
   });
   return result.rows as T[];
 }
@@ -89,7 +89,7 @@ export async function execute(
 
   const result = await tursoClient!.execute({
     sql,
-    args: params.map(p => p === undefined ? null : p),
+    args: params.map(p => (p === undefined || p === '') ? null : p),
   });
   return {
     lastId: Number(result.lastInsertRowid) || undefined,
@@ -135,7 +135,7 @@ export async function executeBatch(
   await tursoClient!.batch(
     statements.map(s => ({
       sql: s.sql,
-      args: (s.args || []).map(p => p === undefined ? null : p),
+      args: (s.args || []).map(p => (p === undefined || p === '') ? null : p),
     }))
   );
 }
