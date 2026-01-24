@@ -158,8 +158,8 @@ async function downloadCSVFile(page: Page, downloadDir: string): Promise<string>
     }
   });
 
-  console.log('Warm-up click completed, waiting 35 seconds for server to prepare CSV...');
-  await new Promise(resolve => setTimeout(resolve, 35000));
+  console.log('Warm-up click completed, waiting 10 seconds for server to prepare CSV...');
+  await new Promise(resolve => setTimeout(resolve, 10000));
 
   // Second click: Actual download with CDP handling
   console.log('Download click: Starting download...');
