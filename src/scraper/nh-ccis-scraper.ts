@@ -363,13 +363,28 @@ function parseCSVFile(csvPath: string): CCISProvider[] {
       return idx >= 0 && idx < values.length ? values[idx] || '' : '';
     };
     
+    // Helper to check if a value is effectively empty (empty, whitespace, or just quotes)
+    const isEmptyValue = (v: string): boolean => {
+      if (!v) return true;
+      const trimmed = v.trim();
+      return trimmed === '' || trimmed === '"' || trimmed === '""';
+    };
+
+    // Helper to clean a value (remove lone quotes, trim)
+    const cleanValue = (v: string): string => {
+      if (!v) return '';
+      const trimmed = v.trim();
+      if (trimmed === '"' || trimmed === '""') return '';
+      return trimmed;
+    };
+
     // Construct age_groups from age columns if available
-    const ageWeeksLow = getValue('Age Weeks Low');
-    const ageMonthsLow = getValue('Age Months Low');
-    const ageYearsLow = getValue('Age Years Low');
-    const ageYearsHigh = getValue('Age Years High');
-    let ageGroups = getValue('Age Groups Served') || getValue('age groups served') || getValue('age groups');
-    
+    const ageWeeksLow = cleanValue(getValue('Age Weeks Low'));
+    const ageMonthsLow = cleanValue(getValue('Age Months Low'));
+    const ageYearsLow = cleanValue(getValue('Age Years Low'));
+    const ageYearsHigh = cleanValue(getValue('Age Years High'));
+    let ageGroups = cleanValue(getValue('Age Groups Served') || getValue('age groups served') || getValue('age groups'));
+
     if (!ageGroups && (ageYearsLow || ageYearsHigh)) {
       const parts: string[] = [];
       if (ageYearsLow) parts.push(`${ageYearsLow} years`);
@@ -378,26 +393,26 @@ function parseCSVFile(csvPath: string): CCISProvider[] {
     }
     
     providers.push({
-      program_name: getValue('Program Name') || getValue('program name'),
-      status: getValue('Provider Enrollment Status') || getValue('provider enrollment status') || getValue('status'),
-      phone: getValue('Program Phone') || getValue('program phone') || getValue('phone'),
-      email: getValue('Program Email') || getValue('program email') || getValue('email'),
-      region: getValue('Region') || getValue('region'),
-      county: getValue('County') || getValue('county'),
-      street: getValue('Shipping Street') || getValue('shipping street') || getValue('street'),
-      city: getValue('Shipping City') || getValue('shipping city') || getValue('city'),
-      state: getValue('Shipping State') || getValue('shipping state') || getValue('state'),
-      zip: getValue('Shipping Zip') || getValue('shipping zip') || getValue('zip'),
-      record_type: getValue('Account Record Type') || getValue('account record type') || getValue('record type'),
-      gsq_step: getValue('GSQ Approved Step') || getValue('gsq approved step') || getValue('gsq step'),
-      provider_number: getValue('Provider Number') || getValue('provider number'),
-      license_date: getValue('License Issue Date') || getValue('license issue date') || getValue('license date'),
-      license_type: getValue('License Type') || getValue('license type') || getValue('License Expiration Date') || '',
-      accepts_scholarship: getValue('Accepts NH Child Care Scholarship') || getValue('accepts nh child care scholarship') || getValue('accepts scholarship') || '',
-      accredited: getValue('Accredited') || getValue('accredited') || '',
-      capacity: getValue('Capacity') || getValue('capacity') || getValue('Licensed Capacity') || getValue('licensed capacity') || '',
-      age_groups: ageGroups || '',
-      enrollment: getValue('Total Enrollment') || getValue('total enrollment') || getValue('enrollment') || '',
+      program_name: cleanValue(getValue('Program Name') || getValue('program name')),
+      status: cleanValue(getValue('Provider Enrollment Status') || getValue('provider enrollment status') || getValue('status')),
+      phone: cleanValue(getValue('Program Phone') || getValue('program phone') || getValue('phone')),
+      email: cleanValue(getValue('Program Email') || getValue('program email') || getValue('email')),
+      region: cleanValue(getValue('Region') || getValue('region')),
+      county: cleanValue(getValue('County') || getValue('county')),
+      street: cleanValue(getValue('Shipping Street') || getValue('shipping street') || getValue('street')),
+      city: cleanValue(getValue('Shipping City') || getValue('shipping city') || getValue('city')),
+      state: cleanValue(getValue('Shipping State') || getValue('shipping state') || getValue('state')),
+      zip: cleanValue(getValue('Shipping Zip') || getValue('shipping zip') || getValue('zip')),
+      record_type: cleanValue(getValue('Account Record Type') || getValue('account record type') || getValue('record type')),
+      gsq_step: cleanValue(getValue('GSQ Approved Step') || getValue('gsq approved step') || getValue('gsq step')),
+      provider_number: cleanValue(getValue('Provider Number') || getValue('provider number')),
+      license_date: cleanValue(getValue('License Issue Date') || getValue('license issue date') || getValue('license date')),
+      license_type: cleanValue(getValue('License Type') || getValue('license type') || getValue('License Expiration Date')),
+      accepts_scholarship: cleanValue(getValue('Accepts NH Child Care Scholarship') || getValue('accepts nh child care scholarship') || getValue('accepts scholarship')),
+      accredited: cleanValue(getValue('Accredited') || getValue('accredited')),
+      capacity: cleanValue(getValue('Capacity') || getValue('capacity') || getValue('Licensed Capacity') || getValue('licensed capacity')),
+      age_groups: ageGroups,
+      enrollment: cleanValue(getValue('Total Enrollment') || getValue('total enrollment') || getValue('enrollment')),
     });
   }
   
@@ -480,10 +495,15 @@ export async function scrapeCCIS(): Promise<ScrapeResult> {
 }
 
 /**
- * Convert empty string or whitespace-only to null for database insertion
+ * Convert empty string, whitespace-only, or lone quote characters to null for database insertion
  */
 function emptyToNull(value: string): string | null {
-  if (!value || value.trim() === '') {
+  if (!value) {
+    return null;
+  }
+  const trimmed = value.trim();
+  // Treat empty, whitespace-only, or just quote characters as null
+  if (trimmed === '' || trimmed === '"' || trimmed === '""') {
     return null;
   }
   return value;
