@@ -480,10 +480,13 @@ export async function scrapeCCIS(): Promise<ScrapeResult> {
 }
 
 /**
- * Convert empty string to null for database insertion
+ * Convert empty string or whitespace-only to null for database insertion
  */
 function emptyToNull(value: string): string | null {
-  return value === '' ? null : value;
+  if (!value || value.trim() === '') {
+    return null;
+  }
+  return value;
 }
 
 /**
