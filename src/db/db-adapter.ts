@@ -29,13 +29,7 @@ export async function initDb(): Promise<void> {
   const authToken = process.env.TURSO_AUTH_TOKEN;
 
   if (!url) {
-    // Fallback to local file if no Turso URL
-    // console.warn('TURSO_DATABASE_URL not set, falling back to local SQLite file: local.db');
-    useTurso = false;
-    tursoClient = createClient({
-      url: 'file:local.db',
-    });
-    return;
+    throw new Error('TURSO_DATABASE_URL environment variable is required. No local database fallback allowed.');
   }
 
   if (!tursoClient) {
@@ -44,7 +38,7 @@ export async function initDb(): Promise<void> {
       authToken,
     });
   }
-  
+
   // Test connection
   try {
     await tursoClient.execute('SELECT 1');
