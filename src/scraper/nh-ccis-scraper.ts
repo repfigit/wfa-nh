@@ -1,6 +1,6 @@
 import { query, execute, executeBatch } from '../db/db-adapter.js';
-import puppeteer, { Browser, Page } from 'puppeteer';
-import { existsSync, writeFileSync, mkdirSync, readFileSync } from 'fs';
+import { chromium, Browser, Page, BrowserContext } from 'playwright';
+import { existsSync, writeFileSync, mkdirSync, readFileSync, unlinkSync, statSync } from 'fs';
 import { resolve, dirname } from 'path';
 
 // Interfaces
@@ -38,129 +38,166 @@ const CCIS_URL = 'https://new-hampshire.my.site.com/nhccis/NH_ChildCareSearch';
 const CSV_PATH = resolve(process.cwd(), 'data/downloads/nhccis-providers.csv');
 
 /**
- * Launch Puppeteer browser
+ * Launch Playwright browser
  */
-async function launchBrowser(): Promise<Browser> {
-  const chromePath = '/usr/bin/google-chrome';
-  const isTriggerRuntime = process.env.TRIGGER_RUN_ID !== undefined || 
-    (process.env.TRIGGER_SECRET_KEY !== undefined && existsSync(chromePath));
-  
-  const options: any = {
+async function launchBrowser(): Promise<{ browser: Browser; context: BrowserContext }> {
+  const browser = await chromium.launch({
     headless: true,
     args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
-  };
+  });
   
-  if (isTriggerRuntime && existsSync(chromePath)) {
-    options.executablePath = chromePath;
-  }
-  
-  return puppeteer.launch(options);
+  const context = await browser.newContext();
+  return { browser, context };
 }
 
 /**
- * Download CSV file from the "Download Provider Results" link
+ * Download CSV file from the "Download Provider Results" link using Playwright
  */
-async function downloadCSVFile(page: Page, downloadDir: string): Promise<string | null> {
-  console.log('Setting up download behavior...');
+async function downloadCSVFile(page: Page, downloadDir: string): Promise<string> {
+  console.log('Setting up download handling...');
   
-  // Set up download path using CDP
-  const client = await page.target().createCDPSession();
-  await client.send('Page.setDownloadBehavior', {
-    behavior: 'allow',
-    downloadPath: downloadDir,
+  await page.waitForLoadState('networkidle', { timeout: 30000 });
+  await page.waitForTimeout(2000);
+  
+  // Intercept ALL responses for CSV data
+  const csvData: Array<{ url: string; buffer: Buffer }> = [];
+  page.on('response', async (response) => {
+    const url = response.url();
+    const contentType = response.headers()['content-type'] || '';
+    const contentDisposition = response.headers()['content-disposition'] || '';
+    
+    const isCSV = contentType.includes('csv') || 
+                  contentType.includes('text/csv') ||
+                  contentDisposition.includes('.csv') ||
+                  contentDisposition.includes('attachment') ||
+                  url.includes('.csv') || 
+                  url.includes('download') || 
+                  url.includes('export');
+    
+    if (isCSV && response.status() === 200) {
+      try {
+        const buffer = await response.body();
+        if (buffer.length > 100) {
+          console.log(`✓ Intercepted CSV: ${url} (${buffer.length} bytes)`);
+          csvData.push({ url, buffer });
+        }
+      } catch (e) {
+        // Ignore
+      }
+    }
   });
   
-  console.log('Looking for "Download Provider Results" link...');
+  // Set up download event handler (will be recreated per attempt)
   
-  // Wait for page to be fully loaded
-  await page.waitForSelector('a, button', { timeout: 30000 });
-  
-  // Try multiple selectors to find the download link
-  const downloadSelectors = [
-    'a:has-text("Download Provider Results")',
-    'a[href*="Download"]',
-    'a:contains("Download Provider Results")',
-    'a:contains("Download Your Search Results")',
-    'a[title*="Download"]',
-  ];
-  
-  let downloadLink = null;
-  for (const selector of downloadSelectors) {
-    try {
-      downloadLink = await page.$(selector);
-      if (downloadLink) {
-        console.log(`Found download link with selector: ${selector}`);
-        break;
+  // Find the download link
+  console.log('Finding download link...');
+  const linkInfo = await page.evaluate(() => {
+    const links = Array.from(document.querySelectorAll('a, button'));
+    for (const el of links) {
+      const text = (el as HTMLElement).textContent?.trim() || '';
+      if (text.includes('Download Provider Results') ||
+          text.includes('Download Your Search Results') ||
+          (text.includes('Download') && text.includes('Provider'))) {
+        const anchor = el as HTMLAnchorElement;
+        return {
+          tag: el.tagName,
+          text: text,
+          href: anchor.href || '',
+          id: el.id || '',
+        };
       }
-    } catch (e) {
-      // Try next selector
+    }
+    return null;
+  });
+  
+  if (!linkInfo) {
+    throw new Error('Could not find "Download Provider Results" link');
+  }
+  
+  console.log(`Found link: ${linkInfo.tag} - "${linkInfo.text}"`);
+  
+  const filePath = resolve(downloadDir, 'nhccis-providers.csv');
+  const downloadLink = linkInfo.id
+    ? page.locator(`#${linkInfo.id}`).first()
+    : page.locator(`text="${linkInfo.text}"`).first();
+  
+  await downloadLink.waitFor({ state: 'visible', timeout: 10000 });
+  
+  // First click: "Warm-up" - triggers server-side CSV generation
+  console.log('Warm-up click: Triggering CSV generation...');
+  await downloadLink.click({ timeout: 10000 });
+  console.log('Warm-up click completed, waiting 30 seconds for server to prepare CSV...');
+  await page.waitForTimeout(30000);
+  
+  // Second click: Actual download (should work immediately after warm-up)
+  console.log('Download click: Attempting to download prepared CSV...');
+  const mainDownloadPromise = page.waitForEvent('download', { timeout: 35000 });
+  await downloadLink.click({ timeout: 10000 });
+  
+  // Wait for download event
+  try {
+    const download = await mainDownloadPromise;
+    const filename = download.suggestedFilename();
+    if (filename) {
+      await download.saveAs(filePath);
+      console.log(`✓ Downloaded via download event: ${filePath}`);
+      return filePath;
+    }
+  } catch (e: any) {
+    console.log(`No download event (${e.message}), checking intercepted responses...`);
+  }
+  
+  // Wait a bit more for responses
+  await page.waitForTimeout(5000);
+  
+  // Check intercepted CSV data
+  if (csvData.length > 0) {
+    console.log(`Found ${csvData.length} CSV response(s)`);
+    const largest = csvData.reduce((prev, curr) => 
+      curr.buffer.length > prev.buffer.length ? curr : prev
+    );
+    writeFileSync(filePath, largest.buffer);
+    console.log(`✓ Saved CSV from intercepted response: ${filePath} (${largest.buffer.length} bytes)`);
+    return filePath;
+  }
+  
+  // Check if file was downloaded to default location
+  if (existsSync(filePath)) {
+    const stats = statSync(filePath);
+    if (stats.size > 100) {
+      console.log(`✓ Found downloaded file: ${filePath} (${stats.size} bytes)`);
+      return filePath;
     }
   }
   
-  // If not found with selectors, try finding by text content
-  if (!downloadLink) {
-    console.log('Trying to find link by text content...');
-    downloadLink = await page.evaluateHandle(() => {
-      const links = Array.from(document.querySelectorAll('a'));
-      return links.find((link: any) => 
-        link.textContent?.includes('Download Provider Results') ||
-        link.textContent?.includes('Download Your Search Results') ||
-        link.textContent?.includes('Download') && link.textContent.includes('Provider')
-      ) || null;
-    });
-    
-    if (downloadLink && (downloadLink as any).asElement) {
-      downloadLink = (downloadLink as any).asElement();
-    } else {
-      downloadLink = null;
+  // Fallback: Try one more time if first attempt didn't work
+  console.log('Fallback: Trying one more download attempt...');
+  const fallbackDownloadPromise = page.waitForEvent('download', { timeout: 35000 });
+  await downloadLink.click({ timeout: 10000 });
+  await page.waitForTimeout(10000);
+  
+  try {
+    const download = await fallbackDownloadPromise;
+    const filename = download.suggestedFilename();
+    if (filename) {
+      await download.saveAs(filePath);
+      console.log(`✓ Downloaded via fallback attempt: ${filePath}`);
+      return filePath;
     }
+  } catch (e: any) {
+    // Ignore
   }
   
-  if (!downloadLink) {
-    throw new Error('Could not find "Download Provider Results" link on the page');
+  if (csvData.length > 0) {
+    const largest = csvData.reduce((prev, curr) => 
+      curr.buffer.length > prev.buffer.length ? curr : prev
+    );
+    writeFileSync(filePath, largest.buffer);
+    console.log(`✓ Saved CSV from fallback intercepted response: ${filePath} (${largest.buffer.length} bytes)`);
+    return filePath;
   }
   
-  console.log('Clicking download link...');
-  
-  // Get the list of files before download
-  const filesBefore = require('fs').readdirSync(downloadDir).filter((f: string) => f.endsWith('.csv'));
-  
-  // Click the download link
-  await downloadLink.click();
-  
-  // Wait for download to complete (check for new file)
-  console.log('Waiting for CSV download to complete...');
-  let downloadedFile: string | null = null;
-  const maxWait = 30000; // 30 seconds
-  const startTime = Date.now();
-  
-  while (Date.now() - startTime < maxWait) {
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    const filesAfter = require('fs').readdirSync(downloadDir).filter((f: string) => f.endsWith('.csv'));
-    const newFiles = filesAfter.filter((f: string) => !filesBefore.includes(f));
-    
-    if (newFiles.length > 0) {
-          // Find the most recently modified file
-          const fileStats = newFiles.map((f: string) => {
-            const fullPath = require('path').resolve(downloadDir, f);
-            return {
-              name: f,
-              path: fullPath,
-              mtime: require('fs').statSync(fullPath).mtimeMs
-            };
-          }).sort((a: { mtime: number }, b: { mtime: number }) => b.mtime - a.mtime);
-      
-      downloadedFile = fileStats[0].path;
-      console.log(`Download complete: ${downloadedFile}`);
-      break;
-    }
-  }
-  
-  if (!downloadedFile) {
-    throw new Error('CSV download did not complete within timeout period');
-  }
-  
-  return downloadedFile;
+  throw new Error(`Could not download CSV after 3 attempts. Intercepted ${csvData.length} responses`);
 }
 
 /**
@@ -239,14 +276,32 @@ function parseCSVFile(csvPath: string): CCISProvider[] {
   
   // Parse data rows
   const providers: CCISProvider[] = [];
+  let skippedRows = 0;
   for (let i = 1; i < lines.length; i++) {
     const values = parseLine(lines[i]);
-    if (values.length === 0) continue;
+    if (values.length === 0) {
+      skippedRows++;
+      continue;
+    }
     
     const getValue = (colName: string): string => {
       const idx = getCol(colName);
       return idx >= 0 && idx < values.length ? values[idx] || '' : '';
     };
+    
+    // Construct age_groups from age columns if available
+    const ageWeeksLow = getValue('Age Weeks Low');
+    const ageMonthsLow = getValue('Age Months Low');
+    const ageYearsLow = getValue('Age Years Low');
+    const ageYearsHigh = getValue('Age Years High');
+    let ageGroups = getValue('Age Groups Served') || getValue('age groups served') || getValue('age groups');
+    
+    if (!ageGroups && (ageYearsLow || ageYearsHigh)) {
+      const parts: string[] = [];
+      if (ageYearsLow) parts.push(`${ageYearsLow} years`);
+      if (ageYearsHigh) parts.push(`to ${ageYearsHigh} years`);
+      if (parts.length > 0) ageGroups = parts.join(' ');
+    }
     
     providers.push({
       program_name: getValue('Program Name') || getValue('program name'),
@@ -263,15 +318,16 @@ function parseCSVFile(csvPath: string): CCISProvider[] {
       gsq_step: getValue('GSQ Approved Step') || getValue('gsq approved step') || getValue('gsq step'),
       provider_number: getValue('Provider Number') || getValue('provider number'),
       license_date: getValue('License Issue Date') || getValue('license issue date') || getValue('license date'),
-      license_type: getValue('License Type') || getValue('license type'),
-      accepts_scholarship: getValue('Accepts NH Child Care Scholarship') || getValue('accepts nh child care scholarship') || getValue('accepts scholarship'),
-      accredited: getValue('Accredited') || getValue('accredited'),
-      capacity: getValue('Licensed Capacity') || getValue('licensed capacity') || getValue('capacity'),
-      age_groups: getValue('Age Groups Served') || getValue('age groups served') || getValue('age groups'),
-      enrollment: getValue('Total Enrollment') || getValue('total enrollment') || getValue('enrollment'),
+      license_type: getValue('License Type') || getValue('license type') || getValue('License Expiration Date') || '',
+      accepts_scholarship: getValue('Accepts NH Child Care Scholarship') || getValue('accepts nh child care scholarship') || getValue('accepts scholarship') || '',
+      accredited: getValue('Accredited') || getValue('accredited') || '',
+      capacity: getValue('Capacity') || getValue('capacity') || getValue('Licensed Capacity') || getValue('licensed capacity') || '',
+      age_groups: ageGroups || '',
+      enrollment: getValue('Total Enrollment') || getValue('total enrollment') || getValue('enrollment') || '',
     });
   }
   
+  console.log(`Parsed ${providers.length} providers from ${lines.length - 1} CSV rows (skipped ${skippedRows} empty rows)`);
   return providers;
 }
 
@@ -292,49 +348,30 @@ export async function scrapeCCIS(): Promise<ScrapeResult> {
       mkdirSync(downloadDir, { recursive: true });
     }
     
-    // Try to use existing CSV file first if it exists and is recent (within 24 hours)
+    // Delete any existing CSV files to ensure fresh download
     if (existsSync(CSV_PATH)) {
-      const stats = require('fs').statSync(CSV_PATH);
-      const ageHours = (Date.now() - stats.mtimeMs) / (1000 * 60 * 60);
-      if (ageHours < 24) {
-        console.log(`Found recent CSV file (${ageHours.toFixed(1)} hours old), parsing...`);
-        const csvProviders = parseCSVFile(CSV_PATH);
-        if (csvProviders.length > 0) {
-          console.log(`Parsed ${csvProviders.length} providers from existing CSV file`);
-          result.totalFound = csvProviders.length;
-          
-          // Load into database
-          await loadProvidersIntoDatabase(csvProviders);
-          result.success = true;
-          return result;
-        }
-      }
+      unlinkSync(CSV_PATH);
+      console.log('Deleted existing CSV file to ensure fresh download');
     }
     
-    // Download fresh CSV from website
+    // Download fresh CSV from website using Playwright
     console.log('Downloading CSV from NH CCIS website...');
-    browser = await launchBrowser();
-    const page = await browser.newPage();
+    const { browser: browserInstance, context } = await launchBrowser();
+    browser = browserInstance;
+    
+    const page = await context.newPage();
     
     // Set a reasonable viewport
-    await page.setViewport({ width: 1280, height: 800 });
+    await page.setViewportSize({ width: 1280, height: 800 });
     
     console.log('Navigating to NH CCIS...');
-    await page.goto(CCIS_URL, { waitUntil: 'networkidle2', timeout: 60000 });
+    await page.goto(CCIS_URL, { waitUntil: 'networkidle', timeout: 60000 });
     
     // Wait a bit for page to fully render
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    await page.waitForTimeout(2000);
     
-    // Download the CSV file
-    const downloadedFile = await downloadCSVFile(page, downloadDir);
-    
-    if (!downloadedFile) {
-      throw new Error('Failed to download CSV file');
-    }
-    
-    // Copy to our standard location
-    writeFileSync(CSV_PATH, readFileSync(downloadedFile));
-    console.log(`Saved CSV to ${CSV_PATH}`);
+    // Download the CSV file (saves directly to CSV_PATH)
+    await downloadCSVFile(page, downloadDir);
     
     // Parse the CSV file
     const providers = parseCSVFile(CSV_PATH);
@@ -379,9 +416,10 @@ async function loadProvidersIntoDatabase(providers: CCISProvider[]): Promise<voi
   // 2. LOAD: Bulk insert into dedicated source table
   console.log(`Loading ${providers.length} records into source_ccis...`);
   const batchSize = 100;
+  let insertedCount = 0;
   for (let i = 0; i < providers.length; i += batchSize) {
     const batch = providers.slice(i, i + batchSize);
-    await executeBatch(batch.map(row => ({
+    const results = await executeBatch(batch.map(row => ({
       sql: `INSERT INTO source_ccis (
         program_name, status, phone, email, region, county,
         street, city, state, zip,
@@ -395,11 +433,23 @@ async function loadProvidersIntoDatabase(providers: CCISProvider[]): Promise<voi
         row.accepts_scholarship, row.accredited, row.capacity, row.age_groups, row.enrollment
       ]
     })));
-    if ((i + batchSize) % 500 === 0) {
-      console.log(`  Inserted ${Math.min(i + batchSize, providers.length)} / ${providers.length}...`);
+    insertedCount += batch.length;
+    if ((i + batchSize) % 500 === 0 || i + batchSize >= providers.length) {
+      console.log(`  Inserted ${insertedCount} / ${providers.length}...`);
     }
   }
+  
+  // Verify all records were inserted
+  const countResult = await query<{ count: number }>('SELECT COUNT(*) as count FROM source_ccis');
+  const dbCount = countResult[0]?.count || 0;
   console.log(`Successfully inserted ${providers.length} records into source_ccis`);
+  console.log(`Database verification: ${dbCount} records in source_ccis table`);
+  
+  if (dbCount !== providers.length) {
+    console.warn(`⚠️  WARNING: Database count (${dbCount}) does not match parsed count (${providers.length})`);
+  } else {
+    console.log(`✓ Verified: All ${providers.length} records loaded successfully`);
+  }
 }
 
 export default { scrapeCCIS };

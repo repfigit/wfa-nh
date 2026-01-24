@@ -9,10 +9,6 @@
      "api/index.ts": {
        "memory": 1024,
        "maxDuration": 60
-     },
-     "api/debug.ts": {
-       "memory": 1024,
-       "maxDuration": 30
      }
    }
 }

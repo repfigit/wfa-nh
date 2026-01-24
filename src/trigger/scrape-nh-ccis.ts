@@ -8,7 +8,17 @@ export const scrapeNhCcis = task({
     logger.info("Starting NH CCIS Pipeline");
     
     const scrapeResult = await scrapeCCIS();
-    if (!scrapeResult.documentId) throw new Error("Scrape failed to produce document ID");
+    
+    if (!scrapeResult.success) {
+      const errorMsg = scrapeResult.error || "Scrape failed for unknown reason";
+      logger.error(`CCIS scrape failed: ${errorMsg}`);
+      throw new Error(`CCIS scrape failed: ${errorMsg}`);
+    }
+    
+    if (!scrapeResult.documentId) {
+      logger.error("Scrape succeeded but did not produce document ID");
+      throw new Error("Scrape failed to produce document ID");
+    }
     
     const bridgeResult = await bridgeCCIS(scrapeResult.documentId);
     
