@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl:*)",
+      "Bash(sqlite3:*)",
+      "Bash(lsof:*)",
+      "Bash(netstat:*)",
+      "Bash(ps:*)",
+      "Bash(ls:*)",
+      "Bash(source /workspaces/wfa-nh/.env)",
+      "Bash(npx turso db shell:*)",
+      "Bash(source .env)",
+      "Bash(node -e:*)"
+    ]
+  }
+}
