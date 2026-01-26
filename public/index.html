@@ -2333,10 +2333,10 @@
         
         // Render audits table
         const tbody = document.querySelector('#fac-audits-table tbody');
-        if (data.audits.length === 0) {
+        if (data.awards.length === 0) {
           tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-light);">No audits found.</td></tr>';
         } else {
-          tbody.innerHTML = data.audits.map(r => {
+          tbody.innerHTML = data.awards.map(r => {
             const fraudBadges = (r.fraudIndicators || []).map(f => 
               `<span class="badge badge-${f.severity}" title="${f.description}">${f.type}</span>`
             ).join(' ');
@@ -2519,10 +2519,10 @@
         
         // Render awards table
         const tbody = document.querySelector('#taggs-awards-table tbody');
-        if (data.audits.length === 0) {
+        if (data.awards.length === 0) {
           tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-light);">No awards found.</td></tr>';
         } else {
-          tbody.innerHTML = data.audits.map(r => {
+          tbody.innerHTML = data.awards.map(r => {
             const fraudBadges = (r.fraudIndicators || []).map(f => 
               `<span class="badge badge-${f.severity}" title="${f.description}">${f.type}</span>`
             ).join(' ');

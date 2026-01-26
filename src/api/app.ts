@@ -623,12 +623,24 @@ app.get('/api/hhs-taggs', asyncHandler(async (req, res) => {
     withFraudIndicatorsOnly: req.query.with_fraud_indicators === 'true',
   });
   
+  // Build byProgram summary
+  const byProgram: Record<string, { name: string; count: number; amount: number }> = {};
+  for (const a of awards) {
+    const key = a.cfdaNumber || 'unknown';
+    if (!byProgram[key]) {
+      byProgram[key] = { name: a.cfdaProgramName || key, count: 0, amount: 0 };
+    }
+    byProgram[key].count++;
+    byProgram[key].amount += a.awardAmount || 0;
+  }
+
   const stats = {
     total: awards.length,
     refugeeAwards: awards.filter(a => a.category === 'refugee').length,
     childcareAwards: awards.filter(a => a.category === 'childcare').length,
     totalAmount: awards.reduce((sum, a) => sum + a.awardAmount, 0),
     withFraudIndicators: awards.filter(a => a.fraudIndicators?.length > 0).length,
+    byProgram,
   };
   
   res.json({ awards, stats });
