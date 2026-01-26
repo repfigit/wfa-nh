@@ -199,11 +199,17 @@ export const dbHelpers = {
        // return query('SELECT DISTINCT source_key as name, "managed" as type FROM scraped_documents');
     }
     
-    // Return hardcoded sources if no data yet
+    // Return sources - includes new federal data sources
     return [
       { name: 'NH CCIS Provider Directory', type: 'scraped', url: 'https://new-hampshire.my.site.com/nhccis/NH_ChildCareSearch', frequency: 'Weekly', description: 'Official list of licensed childcare providers in New Hampshire.' },
       { name: 'TransparentNH', type: 'scraped', url: 'https://www.transparentnh.nh.gov/', frequency: 'Weekly', description: 'State expenditure data including childcare scholarship payments.' },
       { name: 'USAspending.gov', type: 'api', url: 'https://www.usaspending.gov/', frequency: 'Daily', description: 'Federal CCDF grant awards and sub-awards to New Hampshire.' },
+      { name: 'DHHS Contracts', type: 'scraped', url: 'https://www.dhhs.nh.gov/business/contracts/', frequency: 'Weekly', description: 'NH DHHS contract solicitations and awards for immigrant/refugee service providers.' },
+      { name: 'Federal Audit Clearinghouse (FAC)', type: 'api', url: 'https://www.fac.gov/', frequency: 'Monthly', description: 'Single Audit reports tracking audit findings, questioned costs, and material weaknesses.' },
+      { name: 'HHS TAGGS', type: 'api', url: 'https://taggs.hhs.gov/', frequency: 'Weekly', description: 'HHS grant awards including refugee programs (93.566/567/576) and CCDF programs (93.575/596).' },
+      { name: 'DAS Bids & Awards', type: 'scraped', url: 'https://apps.das.nh.gov/bidscontracts/', frequency: 'Weekly', description: 'NH Department of Administrative Services procurement bids and contract awards.' },
+      { name: 'SAM.gov', type: 'api', url: 'https://sam.gov/', frequency: 'Daily', description: 'Federal contract awards and assistance listings for NH recipients.' },
+      { name: 'Charitable Trusts / Form 990', type: 'api', url: 'https://www.irs.gov/charities-non-profits/form-990-resources-and-tools', frequency: 'Annually', description: 'Nonprofit Form 990 filings tracking revenue, expenses, and executive compensation.' },
     ];
   },
 
