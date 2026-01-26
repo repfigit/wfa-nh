@@ -66,7 +66,7 @@ interface ContractorInfo {
   services: string[];
 }
 
-interface DASBid {
+export interface DASBid {
   bidNumber: string;
   title: string;
   department: string;

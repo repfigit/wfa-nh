@@ -43,7 +43,7 @@ const TARGET_RECIPIENTS = [
   'Catholic Charities New Hampshire',
 ];
 
-interface TAGGSAward {
+export interface TAGGSAward {
   awardId: string;
   recipientName: string;
   recipientCity: string;

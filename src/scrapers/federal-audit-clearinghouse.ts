@@ -29,7 +29,7 @@ const TARGET_ENTITIES = [
   { name: 'Lutheran Immigration and Refugee Service', ein: '131878704' },
 ];
 
-interface SingleAuditReport {
+export interface SingleAuditReport {
   reportId: string;
   auditeeEin: string;
   auditeeName: string;

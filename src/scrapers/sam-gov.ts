@@ -55,7 +55,7 @@ interface SAMEntity {
   cageCode: string | null;
 }
 
-interface FederalAward {
+export interface FederalAward {
   awardId: string;
   recipientName: string;
   recipientUEI: string | null;

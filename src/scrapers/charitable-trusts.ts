@@ -30,7 +30,7 @@ const TARGET_NONPROFITS = [
   { name: 'US Committee for Refugees and Immigrants', ein: '131878704', state: 'DC' },
 ];
 
-interface NonprofitProfile {
+export interface NonprofitProfile {
   ein: string;
   name: string;
   state: string;
