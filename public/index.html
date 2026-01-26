@@ -2308,7 +2308,7 @@
         
         // Update stats
         document.getElementById('fac-total').textContent = data.stats.total;
-        document.getElementById('fac-refugee').textContent = data.stats.refugeeRelated;
+        document.getElementById('fac-refugee').textContent = data.stats.refugeeRelated || '-';
         document.getElementById('fac-findings').textContent = data.stats.withFindings;
         document.getElementById('fac-fraud').textContent = data.stats.withFraudIndicators;
         
@@ -2333,10 +2333,10 @@
         
         // Render audits table
         const tbody = document.querySelector('#fac-audits-table tbody');
-        if (data.records.length === 0) {
+        if (data.audits.length === 0) {
           tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-light);">No audits found.</td></tr>';
         } else {
-          tbody.innerHTML = data.records.map(r => {
+          tbody.innerHTML = data.audits.map(r => {
             const fraudBadges = (r.fraudIndicators || []).map(f => 
               `<span class="badge badge-${f.severity}" title="${f.description}">${f.type}</span>`
             ).join(' ');
@@ -2458,7 +2458,7 @@
         }
         
         const data = await res.json();
-        alert(`FAC scraper completed!\n\nTotal Audits: ${data.stats.total}\nRefugee-Related: ${data.stats.refugeeRelated}\nWith Findings: ${data.stats.withFindings}\nWith Fraud Flags: ${data.stats.withFraudIndicators}`);
+        alert(`FAC scraper completed!\n\nTotal Audits: ${data.stats.total}\nRefugee-Related: ${data.stats.refugeeRelated || '-'}\nWith Findings: ${data.stats.withFindings}\nWith Fraud Flags: ${data.stats.withFraudIndicators}`);
         loadFACAudits();
       } catch (e) {
         alert('Scraper failed: ' + e.message);
@@ -2487,7 +2487,7 @@
         
         // Update stats
         document.getElementById('taggs-total').textContent = data.stats.total;
-        document.getElementById('taggs-refugee').textContent = data.stats.refugeeRelated;
+        document.getElementById('taggs-refugee').textContent = data.stats.refugeeRelated || '-';
         document.getElementById('taggs-childcare').textContent = data.stats.childcareRelated;
         document.getElementById('taggs-amount').textContent = formatCurrency(data.stats.totalAwardAmount);
         
@@ -2519,10 +2519,10 @@
         
         // Render awards table
         const tbody = document.querySelector('#taggs-awards-table tbody');
-        if (data.records.length === 0) {
+        if (data.audits.length === 0) {
           tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-light);">No awards found.</td></tr>';
         } else {
-          tbody.innerHTML = data.records.map(r => {
+          tbody.innerHTML = data.audits.map(r => {
             const fraudBadges = (r.fraudIndicators || []).map(f => 
               `<span class="badge badge-${f.severity}" title="${f.description}">${f.type}</span>`
             ).join(' ');
@@ -2653,7 +2653,7 @@
         }
         
         const data = await res.json();
-        alert(`HHS TAGGS scraper completed!\n\nTotal Awards: ${data.stats.total}\nRefugee Programs: ${data.stats.refugeeRelated}\nChildcare Programs: ${data.stats.childcareRelated}\nTotal Amount: ${formatCurrency(data.stats.totalAwardAmount)}`);
+        alert(`HHS TAGGS scraper completed!\n\nTotal Awards: ${data.stats.total}\nRefugee Programs: ${data.stats.refugeeRelated || '-'}\nChildcare Programs: ${data.stats.childcareRelated}\nTotal Amount: ${formatCurrency(data.stats.totalAwardAmount)}`);
         loadTAGGSAwards();
       } catch (e) {
         alert('Scraper failed: ' + e.message);

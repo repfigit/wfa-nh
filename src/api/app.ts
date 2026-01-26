@@ -583,11 +583,23 @@ app.get('/api/fac-audits', asyncHandler(async (req, res) => {
     ein: req.query.ein as string | undefined,
   });
   
+  // Build byAuditee summary
+  const byAuditee: Record<string, { count: number; totalExpended: number; hasFraudFlags: boolean }> = {};
+  for (const a of audits) {
+    if (!byAuditee[a.auditeeName]) {
+      byAuditee[a.auditeeName] = { count: 0, totalExpended: 0, hasFraudFlags: false };
+    }
+    byAuditee[a.auditeeName].count++;
+    byAuditee[a.auditeeName].totalExpended += a.totalFederalExpenditure || 0;
+    if (a.fraudIndicators?.length > 0) byAuditee[a.auditeeName].hasFraudFlags = true;
+  }
+
   const stats = {
     total: audits.length,
     withFindings: audits.filter(a => a.hasFindings).length,
     withFraudIndicators: audits.filter(a => a.fraudIndicators?.length > 0).length,
     totalQuestionedCosts: audits.reduce((sum, a) => sum + (a.questionedCostsAmount || 0), 0),
+    byAuditee,
   };
   
   res.json({ audits, stats });
