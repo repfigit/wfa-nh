@@ -5,6 +5,7 @@
 import { initializeDb } from '../db/database.js';
 import { searchGCAgendas, saveScrapedData } from './governor-council.js';
 import { generateSampleExpenditures, filterImmigrantRelated, saveExpenditures } from './expenditure.js';
+import { scrapeDHHSContracts } from './dhhs-contracts.js';
 
 async function runAllScrapers() {
   console.log('='.repeat(60));
@@ -44,6 +45,22 @@ async function runAllScrapers() {
     console.log(`Processed ${filtered.length} expenditure records`);
   } catch (error) {
     console.error('Error in expenditure scraper:', error);
+  }
+  
+  console.log();
+
+  // Run DHHS Contracts scraper
+  console.log('-'.repeat(60));
+  console.log('Running DHHS Contracts Scraper...');
+  console.log('-'.repeat(60));
+  
+  try {
+    const result = await scrapeDHHSContracts();
+    console.log(`Processed ${result.stats.total} DHHS contracts`);
+    console.log(`  - Immigrant-related: ${result.stats.immigrantRelated}`);
+    console.log(`  - With fraud indicators: ${result.stats.withFraudIndicators}`);
+  } catch (error) {
+    console.error('Error in DHHS contracts scraper:', error);
   }
   
   console.log();

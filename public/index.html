@@ -520,6 +520,7 @@
     <a href="#" class="active" data-view="dashboard">Dashboard</a>
     <a href="#" data-view="providers">Providers</a>
     <a href="#" data-view="payments">Payments</a>
+    <a href="#" data-view="contracts">DHHS Contracts</a>
     <a href="#" data-view="fraud">Fraud Indicators</a>
     <a href="#" data-view="sources">Data Sources</a>
     <a href="#" data-view="admin">Admin</a>
@@ -659,6 +660,73 @@
             </thead>
             <tbody><tr><td colspan="8" class="loading">Loading...</td></tr></tbody>
           </table>
+        </div>
+      </div>
+    </div>
+    
+    <!-- DHHS Contracts View -->
+    <div id="contracts-view" class="view">
+      <div class="alert-box" style="border-color: #805ad5; background: #f5f0ff;">
+        <h4>🔍 DHHS Contract Tracking</h4>
+        <p style="font-size:0.85rem;">Tracks DHHS contracts with immigrant/refugee service providers. Cross-references G&C approvals and expenditure data to identify fraud patterns.</p>
+      </div>
+      
+      <!-- Contract Stats -->
+      <div class="stats-grid" id="contracts-stats-grid">
+        <div class="stat-card"><h3>Total Contracts</h3><div class="value" id="contracts-total">-</div></div>
+        <div class="stat-card highlight"><h3>Immigrant-Related</h3><div class="value" id="contracts-immigrant">-</div></div>
+        <div class="stat-card danger"><h3>With Fraud Flags</h3><div class="value" id="contracts-fraud">-</div></div>
+        <div class="stat-card"><h3>Total Value</h3><div class="value amount" id="contracts-value">-</div></div>
+      </div>
+      
+      <!-- Vendor Summary -->
+      <div class="card">
+        <div class="card-header">
+          <h2>Contracts by Vendor</h2>
+          <div style="display:flex;gap:0.5rem;">
+            <label><input type="checkbox" id="contracts-immigrant-filter" onchange="loadContracts()"> Immigrant-related only</label>
+            <label><input type="checkbox" id="contracts-fraud-filter" onchange="loadContracts()"> With fraud flags only</label>
+          </div>
+        </div>
+        <div class="card-body">
+          <div id="contracts-vendor-summary" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1rem;margin-bottom:1.5rem;">
+            <div class="loading">Loading vendor summary...</div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Contracts Table -->
+      <div class="card">
+        <div class="card-header">
+          <h2>All DHHS Contracts</h2>
+          <button class="btn btn-sm" onclick="runDHHSScraper()" id="run-dhhs-scraper-btn">🔄 Refresh Data</button>
+        </div>
+        <div class="card-body" style="overflow-x:auto;">
+          <table id="contracts-table">
+            <thead>
+              <tr>
+                <th>RFP/RFA #</th>
+                <th>Title</th>
+                <th>Vendor</th>
+                <th>Type</th>
+                <th>Value</th>
+                <th>Fraud Flags</th>
+                <th>Keywords</th>
+              </tr>
+            </thead>
+            <tbody><tr><td colspan="7" class="loading">Loading contracts...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+      
+      <!-- Cross-Reference Analysis -->
+      <div class="card">
+        <div class="card-header">
+          <h2>Cross-Reference Analysis</h2>
+          <button class="btn btn-sm btn-outline" onclick="runCrossReferenceAnalysis()" id="run-crossref-btn">Run Analysis</button>
+        </div>
+        <div class="card-body" id="crossref-results">
+          <p style="color:var(--text-light);text-align:center;">Click "Run Analysis" to compare contracts, G&C approvals, and expenditure data.</p>
         </div>
       </div>
     </div>
@@ -934,7 +1002,7 @@
     });
     
     function showView(viewName) {
-      const validViews = ['dashboard', 'providers', 'payments', 'fraud', 'sources', 'admin'];
+      const validViews = ['dashboard', 'providers', 'payments', 'contracts', 'fraud', 'sources', 'admin'];
       if (!validViews.includes(viewName)) return;
 
       document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
@@ -948,6 +1016,7 @@
         case 'dashboard': loadDashboard(); break;
         case 'providers': loadProviders(); break;
         case 'payments': loadPayments(); break;
+        case 'contracts': loadContracts(); break;
         case 'fraud': loadFraud(); break;
         case 'sources': loadDataSources(); loadSourceTables(); break;
       }
@@ -958,6 +1027,7 @@
       switch(viewName) {
         case 'providers': loadProviders(); break;
         case 'payments': loadPayments(); break;
+        case 'contracts': loadContracts(); break;
         case 'fraud': loadFraudIndicators(); break;
         case 'sources': loadDataSources(); loadSourceTables(); break;
       }
@@ -1492,6 +1562,256 @@
         refreshJobStatus();
       });
     }
+
+    // ==========================================
+    // DHHS Contracts Functions
+    // ==========================================
+    
+    async function loadContracts() {
+      const immigrantOnly = document.getElementById('contracts-immigrant-filter')?.checked || false;
+      const fraudOnly = document.getElementById('contracts-fraud-filter')?.checked || false;
+      
+      try {
+        const params = new URLSearchParams();
+        if (immigrantOnly) params.append('immigrant_related', 'true');
+        if (fraudOnly) params.append('with_fraud_indicators', 'true');
+        
+        const res = await fetch(`${API_BASE}/dhhs-contracts?${params}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        
+        // Update stats
+        document.getElementById('contracts-total').textContent = data.stats.total;
+        document.getElementById('contracts-immigrant').textContent = data.stats.immigrantRelated;
+        document.getElementById('contracts-fraud').textContent = data.stats.withFraudIndicators;
+        document.getElementById('contracts-value').textContent = formatCurrency(data.stats.totalValue);
+        
+        // Render vendor summary cards
+        const vendorSummary = document.getElementById('contracts-vendor-summary');
+        const vendors = Object.entries(data.stats.byVendor).sort((a, b) => b[1].totalValue - a[1].totalValue);
+        
+        if (vendors.length === 0) {
+          vendorSummary.innerHTML = '<p style="color:var(--text-light);">No contracts found.</p>';
+        } else {
+          vendorSummary.innerHTML = vendors.map(([vendor, info]) => `
+            <div class="source-card" style="border-left: 3px solid ${info.count >= 3 ? 'var(--danger)' : 'var(--primary)'};">
+              <h4>${vendor}</h4>
+              <div style="font-size:0.85rem;">
+                <div><strong>Contracts:</strong> ${info.count} ${info.count >= 3 ? '<span class="badge badge-high">CONCENTRATED</span>' : ''}</div>
+                <div><strong>Total Value:</strong> <span class="amount">${formatCurrency(info.totalValue)}</span></div>
+              </div>
+            </div>
+          `).join('');
+        }
+        
+        // Render contracts table
+        const tbody = document.querySelector('#contracts-table tbody');
+        if (data.contracts.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-light);">No contracts found.</td></tr>';
+        } else {
+          tbody.innerHTML = data.contracts.map(c => {
+            const fraudBadges = (c.fraudIndicators || []).map(f => 
+              `<span class="badge badge-${f.severity}" title="${f.description}">${f.type}</span>`
+            ).join(' ');
+            const keywords = (c.matchedKeywords || []).slice(0, 3).map(k => 
+              `<span class="badge badge-immigrant" style="font-size:0.6rem;">${k}</span>`
+            ).join(' ');
+            
+            return `
+              <tr onclick="showContractDetail('${c.rfpNumber}')" style="cursor:pointer;">
+                <td class="clickable">${c.rfpNumber}</td>
+                <td>${c.title}</td>
+                <td>${c.awardedVendor || '<span style="color:var(--text-light);">Not awarded</span>'}</td>
+                <td><span class="badge ${c.solicitationType === 'sole_source' ? 'badge-high' : ''}">${c.solicitationType}</span></td>
+                <td class="amount">${c.awardedValue ? formatCurrency(c.awardedValue) : '-'}</td>
+                <td>${fraudBadges || '-'}</td>
+                <td>${keywords || '-'}</td>
+              </tr>
+            `;
+          }).join('');
+        }
+      } catch (e) {
+        console.error('Failed to load contracts:', e);
+        document.querySelector('#contracts-table tbody').innerHTML = 
+          `<tr><td colspan="7" class="error">Failed to load contracts: ${e.message}</td></tr>`;
+      }
+    }
+    
+    async function showContractDetail(rfpNumber) {
+      try {
+        const res = await fetch(`${API_BASE}/dhhs-contracts/${encodeURIComponent(rfpNumber)}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const c = data.contract;
+        
+        const fraudList = (c.fraudIndicators || []).map(f => `
+          <div class="alert-box ${f.severity === 'high' || f.severity === 'critical' ? 'danger' : ''}" style="margin-bottom:0.5rem;">
+            <strong>${severityBadge(f.severity)} ${f.type}</strong>
+            <p style="font-size:0.85rem;margin-top:0.25rem;">${f.description}</p>
+          </div>
+        `).join('');
+        
+        const relatedGC = (data.relatedData?.gcAgendaItems || []).map(doc => `
+          <li><a href="${doc.url}" target="_blank">${doc.title || doc.url}</a> (${doc.scraped_at})</li>
+        `).join('') || '<li>No related G&C items found</li>';
+        
+        const relatedExp = (data.relatedData?.expenditures || []).slice(0, 10).map(e => `
+          <tr><td>${e.fiscal_year}</td><td>${e.vendor_name}</td><td class="amount">${formatCurrency(e.amount)}</td></tr>
+        `).join('') || '<tr><td colspan="3">No related expenditures found</td></tr>';
+        
+        const content = `
+          <div class="detail-grid">
+            <div class="detail-item"><label>RFP/RFA Number</label><div class="value">${c.rfpNumber}</div></div>
+            <div class="detail-item"><label>Department</label><div class="value">${c.department}</div></div>
+            <div class="detail-item"><label>Division</label><div class="value">${c.division}</div></div>
+            <div class="detail-item"><label>Solicitation Type</label><div class="value"><span class="badge ${c.solicitationType === 'sole_source' ? 'badge-high' : ''}">${c.solicitationType}</span></div></div>
+          </div>
+          
+          <h4 style="margin-top:1rem;">Award Details</h4>
+          <div class="detail-grid">
+            <div class="detail-item"><label>Awarded Vendor</label><div class="value">${c.awardedVendor || 'Not awarded'}</div></div>
+            <div class="detail-item"><label>Vendor Code</label><div class="value">${c.awardedVendorCode || '-'}</div></div>
+            <div class="detail-item"><label>Estimated Value</label><div class="value amount">${c.estimatedValue ? formatCurrency(c.estimatedValue) : '-'}</div></div>
+            <div class="detail-item"><label>Awarded Value</label><div class="value amount">${c.awardedValue ? formatCurrency(c.awardedValue) : '-'}</div></div>
+            <div class="detail-item"><label>G&C Approval Date</label><div class="value">${c.gcAgendaDate || '-'}</div></div>
+          </div>
+          
+          <h4 style="margin-top:1rem;">Description</h4>
+          <p style="font-size:0.9rem;background:var(--bg);padding:0.75rem;border-radius:6px;">${c.description || 'No description available'}</p>
+          
+          ${c.matchedKeywords?.length ? `
+          <h4 style="margin-top:1rem;">Matched Keywords</h4>
+          <div>${c.matchedKeywords.map(k => `<span class="badge badge-immigrant">${k}</span>`).join(' ')}</div>
+          ` : ''}
+          
+          ${fraudList ? `
+          <h4 style="margin-top:1rem;">⚠️ Fraud Indicators</h4>
+          ${fraudList}
+          ` : ''}
+          
+          <h4 style="margin-top:1rem;">Related G&C Agenda Items</h4>
+          <ul style="font-size:0.85rem;margin-left:1rem;">${relatedGC}</ul>
+          
+          <h4 style="margin-top:1rem;">Related Expenditures</h4>
+          <table style="font-size:0.85rem;">
+            <thead><tr><th>FY</th><th>Vendor</th><th>Amount</th></tr></thead>
+            <tbody>${relatedExp}</tbody>
+          </table>
+          
+          ${c.pdfUrl ? `<p style="margin-top:1rem;"><a href="${c.pdfUrl}" target="_blank" class="btn btn-outline">View Source PDF</a></p>` : ''}
+        `;
+        
+        openModal('provider-modal');
+        document.getElementById('provider-modal-title').textContent = c.title;
+        document.getElementById('provider-modal-body').innerHTML = content;
+      } catch (e) {
+        alert('Failed to load contract details: ' + e.message);
+      }
+    }
+    
+    async function runDHHSScraper() {
+      const btn = document.getElementById('run-dhhs-scraper-btn');
+      const key = getApiKey();
+      if (!key) {
+        alert('Admin login required to run scrapers. Go to Admin tab first.');
+        return;
+      }
+      
+      btn.disabled = true;
+      btn.textContent = '⏳ Running...';
+      
+      try {
+        const res = await fetch(`${API_BASE}/trigger/dhhs-contracts`, {
+          method: 'POST',
+          headers: getAuthHeaders()
+        });
+        
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || `HTTP ${res.status}`);
+        }
+        
+        const data = await res.json();
+        alert(`DHHS Contracts scraper completed!\n\nTotal: ${data.stats.total}\nImmigrant-related: ${data.stats.immigrantRelated}\nWith fraud flags: ${data.stats.withFraudIndicators}\nSaved: ${data.stats.saved}, Updated: ${data.stats.updated}`);
+        loadContracts();
+      } catch (e) {
+        alert('Scraper failed: ' + e.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '🔄 Refresh Data';
+      }
+    }
+    
+    async function runCrossReferenceAnalysis() {
+      const btn = document.getElementById('run-crossref-btn');
+      const container = document.getElementById('crossref-results');
+      const key = getApiKey();
+      
+      if (!key) {
+        alert('Admin login required. Go to Admin tab first.');
+        return;
+      }
+      
+      btn.disabled = true;
+      btn.textContent = '⏳ Analyzing...';
+      container.innerHTML = '<div class="loading">Running cross-reference analysis...</div>';
+      
+      try {
+        const res = await fetch(`${API_BASE}/analysis/cross-reference`, {
+          headers: getAuthHeaders()
+        });
+        
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || `HTTP ${res.status}`);
+        }
+        
+        const data = await res.json();
+        
+        // Render summary
+        let html = `
+          <div class="stats-grid" style="margin-bottom:1rem;">
+            <div class="stat-card"><h3>Vendors Tracked</h3><div class="value">${data.summary.totalVendors}</div></div>
+            <div class="stat-card"><h3>Total Contract Value</h3><div class="value amount">${formatCurrency(data.summary.totalContractValue)}</div></div>
+            <div class="stat-card"><h3>Total Expenditures</h3><div class="value amount">${formatCurrency(data.summary.totalExpenditures)}</div></div>
+            <div class="stat-card danger"><h3>With Discrepancies</h3><div class="value">${data.summary.vendorsWithDiscrepancies}</div></div>
+          </div>
+        `;
+        
+        // Render vendor details
+        html += '<h4>Vendor Analysis</h4>';
+        html += '<table><thead><tr><th>Vendor</th><th>Contracts</th><th>Contract Value</th><th>Expenditures</th><th>Expenditure Total</th><th>Issues</th></tr></thead><tbody>';
+        
+        for (const [vendor, info] of Object.entries(data.vendors)) {
+          const hasIssues = info.discrepancies.length > 0 || info.fraudIndicators.length > 0;
+          html += `
+            <tr style="${hasIssues ? 'background:#fff5f5;' : ''}">
+              <td><strong>${vendor}</strong></td>
+              <td>${info.dhhsContracts}</td>
+              <td class="amount">${formatCurrency(info.dhhsContractValue)}</td>
+              <td>${info.expenditures}</td>
+              <td class="amount">${formatCurrency(info.expenditureTotal)}</td>
+              <td>
+                ${info.discrepancies.map(d => `<div class="badge badge-high" style="display:block;margin-bottom:0.25rem;">${d}</div>`).join('')}
+                ${info.fraudIndicators.slice(0, 3).map(f => `<div class="badge badge-medium" style="display:block;margin-bottom:0.25rem;font-size:0.65rem;">${f}</div>`).join('')}
+              </td>
+            </tr>
+          `;
+        }
+        
+        html += '</tbody></table>';
+        container.innerHTML = html;
+      } catch (e) {
+        container.innerHTML = `<div class="error">Analysis failed: ${e.message}</div>`;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Run Analysis';
+      }
+    }
+    
+    // ==========================================
+    // End DHHS Contracts Functions
+    // ==========================================
 
     async function confirmInitDb() { if (prompt('Type RESET:')==='RESET') await fetch(`${API_BASE}/admin/init-db`, { method: 'POST', headers: getAuthHeaders() }); }
     async function seedSampleData() { await fetch(`${API_BASE}/admin/seed-sample-data`, { method: 'POST', headers: getAuthHeaders() }); }

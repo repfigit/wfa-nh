@@ -13,7 +13,11 @@
     "init-turbo": "tsx src/db/init-turbo.ts",
     "test-turbo": "tsx src/db/test-turbo.ts",
     "create-schema": "tsx src/db/create-schema.ts",
-    "vercel-build": "tsc"
+    "vercel-build": "tsc",
+    "scrape": "tsx src/scrapers/run-all.ts",
+    "scrape:gc": "tsx src/scrapers/governor-council.ts",
+    "scrape:expenditure": "tsx src/scrapers/expenditure.ts",
+    "scrape:dhhs": "tsx src/scrapers/dhhs-contracts.ts"
   },
   "dependencies": {
     "@libsql/client": "^0.17.0",

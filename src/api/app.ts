@@ -21,6 +21,7 @@ import {
 import { scrapeCCIS } from '../scraper/nh-ccis-scraper.js';
 import { tasks, runs, configure } from '@trigger.dev/sdk/v3';
 import { scrapeUSASpending, getNHStateOverview } from '../scraper/usaspending-scraper.js';
+import { scrapeDHHSContracts, getDHHSContracts, linkContractToProvider } from '../scrapers/dhhs-contracts.js';
 
 // Configure Trigger.dev
 if (process.env.TRIGGER_SECRET_KEY) {
@@ -366,6 +367,202 @@ app.get('/api/admin/sources/:table', requireAuth, asyncHandler(async (req, res) 
       currentPage: page,
       limit
     }
+  });
+}));
+
+// --- DHHS Contracts Routes ---
+
+// Get all DHHS contracts (public)
+app.get('/api/dhhs-contracts', asyncHandler(async (req, res) => {
+  await ensureInitialized();
+  
+  const filters = {
+    immigrantRelatedOnly: req.query.immigrant_related === 'true',
+    withFraudIndicatorsOnly: req.query.with_fraud_indicators === 'true',
+    vendor: typeof req.query.vendor === 'string' ? req.query.vendor : undefined,
+  };
+  
+  const contracts = await getDHHSContracts(filters);
+  
+  // Summary stats
+  const stats = {
+    total: contracts.length,
+    immigrantRelated: contracts.filter(c => c.isImmigrantRelated).length,
+    withFraudIndicators: contracts.filter(c => c.fraudIndicators && c.fraudIndicators.length > 0).length,
+    totalValue: contracts.reduce((sum, c) => sum + (c.awardedValue || 0), 0),
+    byVendor: {} as Record<string, { count: number; totalValue: number }>,
+    bySolicitationType: {} as Record<string, number>,
+  };
+  
+  // Aggregate by vendor
+  for (const contract of contracts) {
+    if (contract.awardedVendor) {
+      if (!stats.byVendor[contract.awardedVendor]) {
+        stats.byVendor[contract.awardedVendor] = { count: 0, totalValue: 0 };
+      }
+      stats.byVendor[contract.awardedVendor].count++;
+      stats.byVendor[contract.awardedVendor].totalValue += contract.awardedValue || 0;
+    }
+    
+    const solType = contract.solicitationType || 'unknown';
+    stats.bySolicitationType[solType] = (stats.bySolicitationType[solType] || 0) + 1;
+  }
+  
+  res.json({ contracts, stats });
+}));
+
+// Get single DHHS contract by RFP number
+app.get('/api/dhhs-contracts/:rfpNumber', asyncHandler(async (req, res) => {
+  await ensureInitialized();
+  
+  const rfpNumber = req.params.rfpNumber;
+  const contracts = await getDHHSContracts();
+  const contract = contracts.find(c => c.rfpNumber === rfpNumber);
+  
+  if (!contract) {
+    return res.status(404).json({ error: 'Contract not found' });
+  }
+  
+  // Get related data from other sources
+  const relatedGCDocs = await query(
+    "SELECT * FROM scraped_documents WHERE source_key = 'governor_council' AND (title LIKE ? OR raw_content LIKE ?)",
+    [`%${rfpNumber}%`, `%${rfpNumber}%`]
+  );
+  
+  const relatedExpenditures = contract.awardedVendor 
+    ? await query("SELECT * FROM expenditures WHERE vendor_name LIKE ?", [`%${contract.awardedVendor}%`])
+    : [];
+  
+  res.json({
+    contract,
+    relatedData: {
+      gcAgendaItems: relatedGCDocs,
+      expenditures: relatedExpenditures,
+    },
+  });
+}));
+
+// Trigger DHHS contracts scraper (protected)
+app.post('/api/trigger/dhhs-contracts', requireAuth, asyncHandler(async (req, res) => {
+  await ensureInitialized();
+  
+  const startTime = Date.now();
+  
+  try {
+    const result = await scrapeDHHSContracts();
+    const duration = Date.now() - startTime;
+    
+    res.json({
+      success: true,
+      message: 'DHHS contracts scraper completed',
+      stats: result.stats,
+      durationMs: duration,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message || 'DHHS contracts scraper failed',
+    });
+  }
+}));
+
+// Link a DHHS contract to a provider (protected)
+app.post('/api/dhhs-contracts/:rfpNumber/link-provider', requireAuth, asyncHandler(async (req, res) => {
+  await ensureInitialized();
+  
+  const { providerId } = req.body;
+  const rfpNumber = req.params.rfpNumber as string;
+  
+  if (!providerId) {
+    return res.status(400).json({ error: 'providerId is required' });
+  }
+  
+  try {
+    await linkContractToProvider(rfpNumber, providerId);
+    res.json({ success: true, message: `Linked ${rfpNumber} to provider ${providerId}` });
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+}));
+
+// Cross-reference analysis endpoint (protected)
+app.get('/api/analysis/cross-reference', requireAuth, asyncHandler(async (req, res) => {
+  await ensureInitialized();
+  
+  // Get all data sources
+  const dhhsContracts = await getDHHSContracts();
+  const gcDocs = await query("SELECT * FROM scraped_documents WHERE source_key = 'governor_council'");
+  const expenditures = await query("SELECT * FROM expenditures ORDER BY fiscal_year DESC LIMIT 1000");
+  
+  // Build cross-reference report
+  const vendorSummary: Record<string, {
+    dhhsContracts: number;
+    dhhsContractValue: number;
+    gcAgendaItems: number;
+    expenditures: number;
+    expenditureTotal: number;
+    fraudIndicators: string[];
+    discrepancies: string[];
+  }> = {};
+  
+  // Process DHHS contracts
+  for (const contract of dhhsContracts) {
+    if (!contract.awardedVendor) continue;
+    
+    const vendor = contract.awardedVendor;
+    if (!vendorSummary[vendor]) {
+      vendorSummary[vendor] = {
+        dhhsContracts: 0,
+        dhhsContractValue: 0,
+        gcAgendaItems: 0,
+        expenditures: 0,
+        expenditureTotal: 0,
+        fraudIndicators: [],
+        discrepancies: [],
+      };
+    }
+    
+    vendorSummary[vendor].dhhsContracts++;
+    vendorSummary[vendor].dhhsContractValue += contract.awardedValue || 0;
+    
+    for (const indicator of contract.fraudIndicators || []) {
+      vendorSummary[vendor].fraudIndicators.push(`[${indicator.severity}] ${indicator.type}: ${indicator.description}`);
+    }
+  }
+  
+  // Process expenditures
+  for (const exp of expenditures) {
+    // Try to match to known vendors
+    for (const [vendor, summary] of Object.entries(vendorSummary)) {
+      if (exp.vendor_name && exp.vendor_name.toLowerCase().includes(vendor.toLowerCase().split(' ')[0])) {
+        summary.expenditures++;
+        summary.expenditureTotal += exp.amount || 0;
+      }
+    }
+  }
+  
+  // Identify discrepancies
+  for (const [vendor, summary] of Object.entries(vendorSummary)) {
+    if (summary.dhhsContractValue > 0 && summary.expenditureTotal > summary.dhhsContractValue * 1.1) {
+      summary.discrepancies.push(
+        `Expenditures ($${summary.expenditureTotal.toLocaleString()}) exceed contract value ($${summary.dhhsContractValue.toLocaleString()})`
+      );
+    }
+    
+    if (summary.dhhsContracts > 0 && summary.expenditures === 0) {
+      summary.discrepancies.push('Has contracts but no matching expenditure records found');
+    }
+  }
+  
+  res.json({
+    vendors: vendorSummary,
+    summary: {
+      totalVendors: Object.keys(vendorSummary).length,
+      totalContractValue: Object.values(vendorSummary).reduce((s, v) => s + v.dhhsContractValue, 0),
+      totalExpenditures: Object.values(vendorSummary).reduce((s, v) => s + v.expenditureTotal, 0),
+      vendorsWithDiscrepancies: Object.values(vendorSummary).filter(v => v.discrepancies.length > 0).length,
+      vendorsWithFraudIndicators: Object.values(vendorSummary).filter(v => v.fraudIndicators.length > 0).length,
+    },
   });
 }));
 
