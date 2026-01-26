@@ -2,7 +2,7 @@ import { execute, executeRaw, executeBatch } from '../db/db-adapter.js';
 import { existsSync, mkdirSync, writeFileSync, readFileSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import * as XLSX from 'xlsx';
+import XLSX from 'xlsx';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.join(__dirname, '../../data/downloads/monthly');
@@ -62,24 +62,59 @@ function getFiscalYearMonths(fiscalYear: number): FiscalYearMonth[] {
 }
 
 /**
- * Download a file with browser-like headers
+ * Download a file with browser-like headers using curl
  */
 async function downloadFile(url: string, destPath: string): Promise<boolean> {
-  try {
-    const response = await fetch(url, { headers: BROWSER_HEADERS });
+  const { spawn } = await import('child_process');
+  
+  return new Promise((resolve) => {
+    const args = ['-sL', '-o', destPath];
     
-    if (!response.ok) {
-      console.log(`  ⚠️ HTTP ${response.status} for ${url}`);
-      return false;
+    // Add all headers
+    for (const [key, value] of Object.entries(BROWSER_HEADERS)) {
+      args.push('-H', `${key}: ${value}`);
     }
+    args.push(url);
     
-    const buffer = await response.arrayBuffer();
-    writeFileSync(destPath, Buffer.from(buffer));
-    return true;
-  } catch (error) {
-    console.log(`  ❌ Error downloading ${url}: ${error}`);
-    return false;
-  }
+    const curl = spawn('curl', args);
+    
+    curl.on('close', (code) => {
+      if (code !== 0) {
+        console.log(`  ⚠️ curl exited with code ${code}`);
+        resolve(false);
+        return;
+      }
+      
+      // Check if file exists and is valid
+      if (!existsSync(destPath)) {
+        console.log(`  ⚠️ File not created for ${url}`);
+        resolve(false);
+        return;
+      }
+      
+      const content = readFileSync(destPath);
+      if (content.length < 1000) {
+        console.log(`  ⚠️ File too small (${content.length} bytes) - likely error page`);
+        resolve(false);
+        return;
+      }
+      
+      // Check if it's HTML error page
+      const head = content.slice(0, 200).toString();
+      if (head.includes('Access Denied') || head.includes('<HTML>')) {
+        console.log(`  ⚠️ Access denied or HTML error page`);
+        resolve(false);
+        return;
+      }
+      
+      resolve(true);
+    });
+    
+    curl.on('error', (err) => {
+      console.log(`  ❌ curl error: ${err}`);
+      resolve(false);
+    });
+  });
 }
 
 /**
