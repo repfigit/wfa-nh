@@ -42,3 +42,4 @@ nul
 tmp/
 temp/
 .cache/
+.env*.local
