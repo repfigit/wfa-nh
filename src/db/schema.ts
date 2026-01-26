@@ -157,6 +157,29 @@ CREATE TABLE IF NOT EXISTS ingestion_runs (
 );
 
 -- 6. BROWSEABLE SOURCE LANDING TABLES
+
+-- TransparentNH Monthly Expenditure Data
+CREATE TABLE IF NOT EXISTS source_transparent_nh (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  fiscal_year INTEGER NOT NULL,
+  month TEXT NOT NULL,
+  calendar_year INTEGER NOT NULL,
+  department TEXT,
+  agency TEXT,
+  activity_number TEXT,
+  activity_name TEXT,
+  expense_class TEXT,
+  vendor_name TEXT,
+  amount REAL,
+  check_number TEXT,
+  check_date TEXT,
+  loaded_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_stn_fy ON source_transparent_nh(fiscal_year);
+CREATE INDEX IF NOT EXISTS idx_stn_vendor ON source_transparent_nh(vendor_name);
+CREATE INDEX IF NOT EXISTS idx_stn_month ON source_transparent_nh(fiscal_year, month, calendar_year);
+
 -- Columns match the CSV export from NH CCIS website exactly
 CREATE TABLE IF NOT EXISTS source_ccis (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

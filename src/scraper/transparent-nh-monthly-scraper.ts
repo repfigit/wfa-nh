@@ -1,14 +1,14 @@
-import { execute, executeRaw, executeBatch } from '../db/db-adapter.js';
-import { existsSync, mkdirSync, writeFileSync, readFileSync } from 'fs';
+import { query, execute, executeBatch } from '../db/db-adapter.js';
+import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, unlinkSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import XLSX from 'xlsx';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DATA_DIR = path.join(__dirname, '../../data/downloads/monthly');
+const DOWNLOAD_DIR = process.env.TRIGGER_ENV ? '/tmp/downloads/transparent-nh' : path.resolve(process.cwd(), 'data/downloads/transparent-nh');
 
 // Browser-like headers to bypass Akamai
-const BROWSER_HEADERS = {
+const BROWSER_HEADERS: Record<string, string> = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
   'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
   'Accept-Language': 'en-US,en;q=0.9',
@@ -28,6 +28,28 @@ const BROWSER_HEADERS = {
 // NH Fiscal Year runs July 1 - June 30
 // FY 2026 = July 2025 - June 2026
 const MONTHS = ['jul', 'aug', 'sep', 'oct', 'nov', 'dec', 'jan', 'feb', 'mar', 'apr', 'may', 'jun'];
+
+interface ScrapeResult {
+  success: boolean;
+  totalFound: number;
+  documentId?: number;
+  error?: string;
+}
+
+interface TransparentNHRecord {
+  fiscal_year: number;
+  month: string;
+  calendar_year: number;
+  department: string;
+  agency: string;
+  activity_number: string;
+  activity_name: string;
+  expense_class: string;
+  vendor_name: string;
+  amount: number;
+  check_number: string;
+  check_date: string;
+}
 
 interface FiscalYearMonth {
   fiscalYear: number;
@@ -50,12 +72,7 @@ function getFiscalYearMonths(fiscalYear: number): FiscalYearMonth[] {
     
     const url = `https://www.nh.gov/transparentnh/where-the-money-goes/${fiscalYear}/documents/expend-detail-${month}${calendarYear}-no_exclusions.xlsx`;
     
-    months.push({
-      fiscalYear,
-      month,
-      calendarYear,
-      url
-    });
+    months.push({ fiscalYear, month, calendarYear, url });
   }
   
   return months;
@@ -85,7 +102,6 @@ async function downloadFile(url: string, destPath: string): Promise<boolean> {
         return;
       }
       
-      // Check if file exists and is valid
       if (!existsSync(destPath)) {
         console.log(`  ⚠️ File not created for ${url}`);
         resolve(false);
@@ -99,7 +115,6 @@ async function downloadFile(url: string, destPath: string): Promise<boolean> {
         return;
       }
       
-      // Check if it's HTML error page
       const head = content.slice(0, 200).toString();
       if (head.includes('Access Denied') || head.includes('<HTML>')) {
         console.log(`  ⚠️ Access denied or HTML error page`);
@@ -118,110 +133,154 @@ async function downloadFile(url: string, destPath: string): Promise<boolean> {
 }
 
 /**
- * Parse XLSX file and return rows as objects
+ * Parse XLSX file and return standardized records
  */
-function parseXlsx(filePath: string): Record<string, any>[] {
+function parseXlsx(filePath: string, fiscalYear: number, month: string, calendarYear: number): TransparentNHRecord[] {
   const workbook = XLSX.readFile(filePath);
   const sheetName = workbook.SheetNames[0];
   const sheet = workbook.Sheets[sheetName];
   
-  // Convert to JSON with headers
-  const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
-  return rows as Record<string, any>[];
+  const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' }) as Record<string, any>[];
+  
+  return rows.map(row => {
+    // Normalize column names (they vary slightly between files)
+    const getValue = (keys: string[]): string => {
+      for (const key of keys) {
+        if (row[key] !== undefined && row[key] !== '') return String(row[key]);
+        const lowerKey = Object.keys(row).find(k => k.toLowerCase() === key.toLowerCase());
+        if (lowerKey && row[lowerKey] !== undefined) return String(row[lowerKey]);
+      }
+      return '';
+    };
+    
+    const amountStr = getValue(['Amount', 'Dollar Amount', 'amount', 'dollar_amount']);
+    const amount = parseFloat(amountStr.replace(/[,$]/g, '')) || 0;
+    
+    return {
+      fiscal_year: fiscalYear,
+      month,
+      calendar_year: calendarYear,
+      department: getValue(['Department', 'Dept', 'department', 'dept']),
+      agency: getValue(['Agency', 'agency']),
+      activity_number: getValue(['Activity No', 'Activity Number', 'activity_no', 'activity_number']),
+      activity_name: getValue(['Activity Name', 'activity_name']),
+      expense_class: getValue(['Expense Class', 'Exp Class', 'expense_class', 'exp_class']),
+      vendor_name: getValue(['Vendor Name', 'Vendor', 'vendor_name', 'vendor']),
+      amount,
+      check_number: getValue(['Check Number', 'Check No', 'check_number', 'check_no']),
+      check_date: getValue(['Check Date', 'Date', 'check_date', 'transaction_date']),
+    };
+  });
 }
 
 /**
- * Normalize column names from XLSX headers
+ * Convert empty string to null for database insertion
  */
-function normalizeColumnName(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, '_')
-    .replace(/_+/g, '_')
-    .replace(/^_|_$/g, '');
+function emptyToNull(value: string | number | null): string | number | null {
+  if (value === '' || value === null || value === undefined) return null;
+  return value;
+}
+
+/**
+ * Load records into the source_transparent_nh table
+ */
+async function loadIntoDatabase(records: TransparentNHRecord[], fiscalYear: number, month: string, calendarYear: number): Promise<void> {
+  // Delete existing records for this specific month (allows re-scraping)
+  console.log(`  Deleting existing records for FY${fiscalYear} ${month} ${calendarYear}...`);
+  await execute(
+    'DELETE FROM source_transparent_nh WHERE fiscal_year = ? AND month = ? AND calendar_year = ?',
+    [fiscalYear, month, calendarYear]
+  );
+  
+  // Bulk insert
+  console.log(`  Loading ${records.length} records...`);
+  const batchSize = 100;
+  let insertedCount = 0;
+  
+  for (let i = 0; i < records.length; i += batchSize) {
+    const batch = records.slice(i, i + batchSize);
+    
+    await executeBatch(batch.map(row => ({
+      sql: `INSERT INTO source_transparent_nh (
+        fiscal_year, month, calendar_year, department, agency, 
+        activity_number, activity_name, expense_class, vendor_name, 
+        amount, check_number, check_date
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [
+        row.fiscal_year,
+        row.month,
+        row.calendar_year,
+        emptyToNull(row.department),
+        emptyToNull(row.agency),
+        emptyToNull(row.activity_number),
+        emptyToNull(row.activity_name),
+        emptyToNull(row.expense_class),
+        emptyToNull(row.vendor_name),
+        row.amount,
+        emptyToNull(row.check_number),
+        emptyToNull(row.check_date),
+      ]
+    })));
+    
+    insertedCount += batch.length;
+    if ((i + batchSize) % 1000 === 0 || i + batchSize >= records.length) {
+      console.log(`    Inserted ${insertedCount} / ${records.length}...`);
+    }
+  }
 }
 
 /**
  * Scrape a single month's expenditure data
  */
-export async function scrapeMonth(fiscalYear: number, month: string, calendarYear: number): Promise<{
-  success: boolean;
-  count: number;
-  filePath?: string;
-  error?: string;
-}> {
+export async function scrapeMonth(fiscalYear: number, month: string, calendarYear: number): Promise<ScrapeResult> {
+  const result: ScrapeResult = { success: false, totalFound: 0 };
+  
   const url = `https://www.nh.gov/transparentnh/where-the-money-goes/${fiscalYear}/documents/expend-detail-${month}${calendarYear}-no_exclusions.xlsx`;
   
-  if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
+  if (!existsSync(DOWNLOAD_DIR)) mkdirSync(DOWNLOAD_DIR, { recursive: true });
   
   const fileName = `fy${fiscalYear}-${month}${calendarYear}.xlsx`;
-  const filePath = path.join(DATA_DIR, fileName);
+  const filePath = path.join(DOWNLOAD_DIR, fileName);
   
   console.log(`📥 Downloading ${month} ${calendarYear} (FY${fiscalYear})...`);
   
   const downloaded = await downloadFile(url, filePath);
   if (!downloaded) {
-    return { success: false, count: 0, error: `Failed to download ${url}` };
+    result.error = `Failed to download ${url}`;
+    return result;
   }
   
   console.log(`📊 Parsing ${fileName}...`);
-  const rows = parseXlsx(filePath);
+  const records = parseXlsx(filePath, fiscalYear, month, calendarYear);
   
-  if (rows.length === 0) {
-    return { success: false, count: 0, error: 'No data in file' };
+  if (records.length === 0) {
+    result.error = 'No data in file';
+    return result;
   }
   
-  // Create source table for this month
-  const tableName = `source_transparent_nh_fy${fiscalYear}_${month}${calendarYear}`;
+  result.totalFound = records.length;
   
-  // Get column names from first row
-  const columns = Object.keys(rows[0]).map(normalizeColumnName);
+  console.log(`💾 Loading ${records.length} records into source_transparent_nh...`);
+  await loadIntoDatabase(records, fiscalYear, month, calendarYear);
   
-  console.log(`💾 Loading ${rows.length} rows into ${tableName}...`);
+  // Audit log
+  const dbResult = await execute(`
+    INSERT INTO scraped_documents (source_key, url, document_type, title, raw_content)
+    VALUES (?, ?, ?, ?, ?)
+  `, [
+    `transparent_nh_fy${fiscalYear}_${month}${calendarYear}`,
+    url,
+    'xlsx',
+    `Transparent NH FY${fiscalYear} ${month} ${calendarYear}`,
+    `Downloaded: ${filePath}, Records: ${records.length}`
+  ]);
   
-  // Drop and recreate table
-  await executeRaw(`DROP TABLE IF EXISTS ${tableName}`);
+  result.documentId = dbResult.lastId;
+  result.success = true;
   
-  const columnDefs = columns.map(c => `${c} TEXT`).join(', ');
-  await executeRaw(`
-    CREATE TABLE ${tableName} (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      ${columnDefs},
-      fiscal_year INTEGER DEFAULT ${fiscalYear},
-      month TEXT DEFAULT '${month}',
-      calendar_year INTEGER DEFAULT ${calendarYear},
-      loaded_at TEXT DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
+  console.log(`✅ Loaded ${records.length} records for ${month} ${calendarYear}`);
   
-  // Batch insert
-  const batchSize = 100;
-  for (let i = 0; i < rows.length; i += batchSize) {
-    const batch = rows.slice(i, i + batchSize);
-    const placeholders = columns.map(() => '?').join(', ');
-    
-    await executeBatch(batch.map(row => {
-      const values = Object.keys(row).map(k => String(row[k] ?? ''));
-      return {
-        sql: `INSERT INTO ${tableName} (${columns.join(', ')}) VALUES (${placeholders})`,
-        args: values
-      };
-    }));
-    
-    if ((i + batchSize) % 1000 === 0) {
-      console.log(`  ... inserted ${Math.min(i + batchSize, rows.length)}/${rows.length} rows`);
-    }
-  }
-  
-  // Log to scraped_documents
-  await execute(`
-    INSERT INTO scraped_documents (source_key, url, title, raw_content)
-    VALUES (?, ?, ?, ?)
-  `, [`transparent_nh_fy${fiscalYear}_${month}${calendarYear}`, url, `Transparent NH FY${fiscalYear} ${month} ${calendarYear}`, `Downloaded to ${filePath}`]);
-  
-  console.log(`✅ Loaded ${rows.length} rows for ${month} ${calendarYear}`);
-  
-  return { success: true, count: rows.length, filePath };
+  return result;
 }
 
 /**
@@ -245,15 +304,12 @@ export async function scrapeFiscalYear(fiscalYear: number): Promise<{
     
     if (result.success) {
       monthsScraped++;
-      totalRows += result.count;
-    } else if (result.error) {
-      // Don't treat missing future months as errors
-      if (!result.error.includes('404') && !result.error.includes('Failed to download')) {
-        errors.push(`${month}${calendarYear}: ${result.error}`);
-      }
+      totalRows += result.totalFound;
+    } else if (result.error && !result.error.includes('Failed to download')) {
+      errors.push(`${month}${calendarYear}: ${result.error}`);
     }
     
-    // Small delay between requests to be nice
+    // Small delay between requests
     await new Promise(resolve => setTimeout(resolve, 500));
   }
   
@@ -292,11 +348,7 @@ export async function scrapeHistorical(): Promise<{
 /**
  * Scrape current fiscal year (FY 2026) - for recurring updates
  */
-export async function scrapeCurrentFiscalYear(): Promise<{
-  success: boolean;
-  monthsScraped: number;
-  totalRows: number;
-}> {
+export async function scrapeCurrentFiscalYear(): Promise<ScrapeResult & { monthsScraped: number }> {
   const currentFY = 2026;
   console.log(`🔄 Scraping current fiscal year (FY${currentFY})...\n`);
   
@@ -304,8 +356,8 @@ export async function scrapeCurrentFiscalYear(): Promise<{
   
   return {
     success: result.success,
+    totalFound: result.totalRows,
     monthsScraped: result.monthsScraped,
-    totalRows: result.totalRows
   };
 }
 
@@ -325,23 +377,21 @@ export async function scrapeNewMonths(): Promise<{
   let totalRows = 0;
   
   for (const { month, calendarYear } of months) {
-    const tableName = `source_transparent_nh_fy${currentFY}_${month}${calendarYear}`;
-    
     // Check if we already have this month
-    try {
-      const result = await execute(`SELECT COUNT(*) as count FROM ${tableName}`, []);
-      if (result.rows && result.rows.length > 0 && (result.rows[0] as any).count > 0) {
-        console.log(`  ⏭️ Skipping ${month} ${calendarYear} (already loaded)`);
-        continue;
-      }
-    } catch {
-      // Table doesn't exist, try to scrape
+    const existing = await query<{ count: number }>(
+      'SELECT COUNT(*) as count FROM source_transparent_nh WHERE fiscal_year = ? AND month = ? AND calendar_year = ?',
+      [currentFY, month, calendarYear]
+    );
+    
+    if (existing[0]?.count > 0) {
+      console.log(`  ⏭️ Skipping ${month} ${calendarYear} (already loaded)`);
+      continue;
     }
     
     const result = await scrapeMonth(currentFY, month, calendarYear);
     if (result.success) {
       newMonths.push(`${month}${calendarYear}`);
-      totalRows += result.count;
+      totalRows += result.totalFound;
     }
     
     await new Promise(resolve => setTimeout(resolve, 500));

@@ -1,5 +1,6 @@
 import { task, schedules } from "@trigger.dev/sdk";
 import transparentNhMonthlyScraper from "../scraper/transparent-nh-monthly-scraper.js";
+import transparentNhBridge from "../bridge/transparent-nh-bridge.js";
 
 /**
  * One-time historical load of all fiscal years (2010-2025)
@@ -13,14 +14,21 @@ export const scrapeHistoricalTask = task({
     minTimeoutInMs: 10000,
     maxTimeoutInMs: 300000,
   },
-  run: async () => {
+  run: async (payload?: { bridge?: boolean }) => {
     console.log("Starting historical data load...");
     const result = await transparentNhMonthlyScraper.scrapeHistorical();
+    
+    let bridgeResult = null;
+    if (payload?.bridge !== false) {
+      console.log("Bridging data to master tables...");
+      bridgeResult = await transparentNhBridge.bridgeAll();
+    }
     
     return {
       success: result.success,
       yearsScraped: result.yearsScraped,
       totalRows: result.totalRows,
+      bridge: bridgeResult,
       message: `Loaded ${result.yearsScraped} fiscal years with ${result.totalRows} total expenditure records`
     };
   },
@@ -63,14 +71,21 @@ export const scrapeNewMonthsTask = task({
     minTimeoutInMs: 5000,
     maxTimeoutInMs: 60000,
   },
-  run: async () => {
+  run: async (payload?: { bridge?: boolean }) => {
     console.log("Checking for new expenditure data...");
     const result = await transparentNhMonthlyScraper.scrapeNewMonths();
+    
+    let bridgeResult = null;
+    if (result.newMonths.length > 0 && payload?.bridge !== false) {
+      console.log("Bridging new data to master tables...");
+      bridgeResult = await transparentNhBridge.bridgeFiscalYear(2026);
+    }
     
     return {
       success: result.success,
       newMonths: result.newMonths,
       totalRows: result.totalRows,
+      bridge: bridgeResult,
       message: result.newMonths.length > 0 
         ? `Found ${result.newMonths.length} new months: ${result.newMonths.join(', ')}`
         : 'No new data available'
@@ -90,12 +105,19 @@ export const weeklyExpenditureCheck = schedules.task({
     
     const result = await transparentNhMonthlyScraper.scrapeNewMonths();
     
+    let bridgeResult = null;
+    if (result.newMonths.length > 0) {
+      console.log("Bridging new data to master tables...");
+      bridgeResult = await transparentNhBridge.bridgeFiscalYear(2026);
+    }
+    
     return {
       scheduledAt: payload.timestamp,
       timezone: payload.timezone,
       success: result.success,
       newMonths: result.newMonths,
       totalRows: result.totalRows,
+      bridge: bridgeResult,
       message: result.newMonths.length > 0 
         ? `Found ${result.newMonths.length} new months of expenditure data`
         : 'No new expenditure data this week'
