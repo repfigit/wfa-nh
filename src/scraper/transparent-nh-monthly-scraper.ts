@@ -348,7 +348,11 @@ export async function scrapeHistorical(): Promise<{
 /**
  * Scrape current fiscal year (FY 2026) - for recurring updates
  */
-export async function scrapeCurrentFiscalYear(): Promise<ScrapeResult & { monthsScraped: number }> {
+export async function scrapeCurrentFiscalYear(): Promise<{
+  success: boolean;
+  monthsScraped: number;
+  totalRows: number;
+}> {
   const currentFY = 2026;
   console.log(`🔄 Scraping current fiscal year (FY${currentFY})...\n`);
   
@@ -356,8 +360,8 @@ export async function scrapeCurrentFiscalYear(): Promise<ScrapeResult & { months
   
   return {
     success: result.success,
-    totalFound: result.totalRows,
     monthsScraped: result.monthsScraped,
+    totalRows: result.totalRows,
   };
 }
 
