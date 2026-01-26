@@ -16,5 +16,4 @@ data
 .git
 
 # Deprecated source
-src/scrapers
 src/analysis
