@@ -11,6 +11,12 @@ import { scrapeSAMGov } from './sam-gov.js';
 import { scrapeCharitableTrusts } from './charitable-trusts.js';
 import { scrapeFederalAuditClearinghouse } from './federal-audit-clearinghouse.js';
 import { scrapeHHSTAGGS } from './hhs-taggs.js';
+import { bridgeDHHSContracts } from '../bridge/dhhs-contracts-bridge.js';
+import { bridgeFAC } from '../bridge/fac-bridge.js';
+import { bridgeHHSTAGGS } from '../bridge/hhs-taggs-bridge.js';
+import { bridgeDASBids } from '../bridge/das-bids-bridge.js';
+import { bridgeSAMGov } from '../bridge/sam-gov-bridge.js';
+import { bridgeCharitableTrusts } from '../bridge/charitable-trusts-bridge.js';
 
 async function runAllScrapers() {
   console.log('='.repeat(60));
@@ -152,8 +158,97 @@ async function runAllScrapers() {
   }
   
   console.log();
+
+  // Bridge scraped data into master tables
   console.log('='.repeat(60));
-  console.log('Data collection complete!');
+  console.log('Bridging Data to Master Tables');
+  console.log('='.repeat(60));
+  console.log();
+
+  // Bridge DHHS Contracts
+  console.log('-'.repeat(60));
+  console.log('Bridging DHHS Contracts...');
+  console.log('-'.repeat(60));
+  try {
+    const dhhsResult = await bridgeDHHSContracts();
+    console.log(`  Contractors: ${dhhsResult.contractorsImported} imported, ${dhhsResult.contractorsUpdated} updated`);
+    console.log(`  Contracts: ${dhhsResult.contractsImported} imported`);
+    console.log(`  Fraud Indicators: ${dhhsResult.fraudIndicatorsCreated} created`);
+  } catch (error) {
+    console.error('Error bridging DHHS contracts:', error);
+  }
+  console.log();
+
+  // Bridge DAS Bids
+  console.log('-'.repeat(60));
+  console.log('Bridging DAS Bids...');
+  console.log('-'.repeat(60));
+  try {
+    const dasResult = await bridgeDASBids();
+    console.log(`  Contractors: ${dasResult.contractorsImported} imported, ${dasResult.contractorsUpdated} updated`);
+    console.log(`  Contracts: ${dasResult.contractsImported} imported`);
+    console.log(`  Fraud Indicators: ${dasResult.fraudIndicatorsCreated} created`);
+  } catch (error) {
+    console.error('Error bridging DAS bids:', error);
+  }
+  console.log();
+
+  // Bridge SAM.gov
+  console.log('-'.repeat(60));
+  console.log('Bridging SAM.gov Federal Awards...');
+  console.log('-'.repeat(60));
+  try {
+    const samResult = await bridgeSAMGov();
+    console.log(`  Contractors: ${samResult.contractorsImported} imported, ${samResult.contractorsUpdated} updated`);
+    console.log(`  Expenditures: ${samResult.expendituresImported} imported`);
+    console.log(`  Fraud Indicators: ${samResult.fraudIndicatorsCreated} created`);
+  } catch (error) {
+    console.error('Error bridging SAM.gov data:', error);
+  }
+  console.log();
+
+  // Bridge Charitable Trusts
+  console.log('-'.repeat(60));
+  console.log('Bridging Charitable Trusts / Form 990 Data...');
+  console.log('-'.repeat(60));
+  try {
+    const ctResult = await bridgeCharitableTrusts();
+    console.log(`  Contractors: ${ctResult.contractorsImported} imported, ${ctResult.contractorsUpdated} updated`);
+    console.log(`  Fraud Indicators: ${ctResult.fraudIndicatorsCreated} created`);
+  } catch (error) {
+    console.error('Error bridging charitable trusts data:', error);
+  }
+  console.log();
+
+  // Bridge Federal Audit Clearinghouse
+  console.log('-'.repeat(60));
+  console.log('Bridging Federal Audit Clearinghouse...');
+  console.log('-'.repeat(60));
+  try {
+    const facResult = await bridgeFAC();
+    console.log(`  Contractors: ${facResult.contractorsImported} imported, ${facResult.contractorsUpdated} updated`);
+    console.log(`  Fraud Indicators: ${facResult.fraudIndicatorsCreated} created`);
+  } catch (error) {
+    console.error('Error bridging FAC data:', error);
+  }
+  console.log();
+
+  // Bridge HHS TAGGS
+  console.log('-'.repeat(60));
+  console.log('Bridging HHS TAGGS...');
+  console.log('-'.repeat(60));
+  try {
+    const taggsResult = await bridgeHHSTAGGS();
+    console.log(`  Contractors: ${taggsResult.contractorsImported} imported, ${taggsResult.contractorsUpdated} updated`);
+    console.log(`  Expenditures: ${taggsResult.expendituresImported} imported`);
+    console.log(`  Fraud Indicators: ${taggsResult.fraudIndicatorsCreated} created`);
+  } catch (error) {
+    console.error('Error bridging HHS TAGGS data:', error);
+  }
+  console.log();
+
+  console.log('='.repeat(60));
+  console.log('Data collection and bridging complete!');
   console.log('='.repeat(60));
   console.log();
   console.log('Next steps:');
