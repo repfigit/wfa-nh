@@ -22,6 +22,11 @@ import { scrapeCCIS } from '../scraper/nh-ccis-scraper.js';
 import { tasks, runs, configure } from '@trigger.dev/sdk/v3';
 import { scrapeUSASpending, getNHStateOverview } from '../scraper/usaspending-scraper.js';
 import { scrapeDHHSContracts, getDHHSContracts, linkContractToProvider } from '../scrapers/dhhs-contracts.js';
+import { scrapeFederalAuditClearinghouse, getFederalAuditReports } from '../scrapers/federal-audit-clearinghouse.js';
+import { scrapeHHSTAGGS, getHHSTAGGSAwards } from '../scrapers/hhs-taggs.js';
+import { scrapeDASBids, getDASBids } from '../scrapers/das-bids.js';
+import { scrapeSAMGov, getSAMContracts } from '../scrapers/sam-gov.js';
+import { scrapeCharitableTrusts, getCharitableTrusts } from '../scrapers/charitable-trusts.js';
 
 // Configure Trigger.dev
 if (process.env.TRIGGER_SECRET_KEY) {
@@ -562,6 +567,213 @@ app.get('/api/analysis/cross-reference', requireAuth, asyncHandler(async (req, r
       totalExpenditures: Object.values(vendorSummary).reduce((s, v) => s + v.expenditureTotal, 0),
       vendorsWithDiscrepancies: Object.values(vendorSummary).filter(v => v.discrepancies.length > 0).length,
       vendorsWithFraudIndicators: Object.values(vendorSummary).filter(v => v.fraudIndicators.length > 0).length,
+    },
+  });
+}));
+
+
+// --- Federal Audit Clearinghouse (FAC) Routes ---
+
+app.get('/api/fac-audits', asyncHandler(async (req, res) => {
+  await ensureInitialized();
+  const audits = await getFederalAuditReports({
+    withFindingsOnly: req.query.with_findings === 'true',
+    withFraudIndicatorsOnly: req.query.with_fraud_indicators === 'true',
+    auditYear: req.query.audit_year ? parseInt(req.query.audit_year as string) : undefined,
+    ein: req.query.ein as string | undefined,
+  });
+  
+  const stats = {
+    total: audits.length,
+    withFindings: audits.filter(a => a.hasFindings).length,
+    withFraudIndicators: audits.filter(a => a.fraudIndicators?.length > 0).length,
+    totalQuestionedCosts: audits.reduce((sum, a) => sum + (a.questionedCostsAmount || 0), 0),
+  };
+  
+  res.json({ audits, stats });
+}));
+
+app.post('/api/trigger/fac-audits', requireAuth, asyncHandler(async (req, res) => {
+  await ensureInitialized();
+  const result = await scrapeFederalAuditClearinghouse();
+  res.json({ success: true, stats: result.stats });
+}));
+
+// --- HHS TAGGS Routes ---
+
+app.get('/api/hhs-taggs', asyncHandler(async (req, res) => {
+  await ensureInitialized();
+  const awards = await getHHSTAGGSAwards({
+    recipient: req.query.recipient as string | undefined,
+    cfdaNumber: req.query.cfda as string | undefined,
+    category: req.query.category as string | undefined,
+    fiscalYear: req.query.fiscal_year ? parseInt(req.query.fiscal_year as string) : undefined,
+    withFraudIndicatorsOnly: req.query.with_fraud_indicators === 'true',
+  });
+  
+  const stats = {
+    total: awards.length,
+    refugeeAwards: awards.filter(a => a.category === 'refugee').length,
+    childcareAwards: awards.filter(a => a.category === 'childcare').length,
+    totalAmount: awards.reduce((sum, a) => sum + a.awardAmount, 0),
+    withFraudIndicators: awards.filter(a => a.fraudIndicators?.length > 0).length,
+  };
+  
+  res.json({ awards, stats });
+}));
+
+app.post('/api/trigger/hhs-taggs', requireAuth, asyncHandler(async (req, res) => {
+  await ensureInitialized();
+  const result = await scrapeHHSTAGGS();
+  res.json({ success: true, stats: result.stats });
+}));
+
+// --- DAS Bids Routes ---
+
+app.get('/api/das-bids', asyncHandler(async (req, res) => {
+  await ensureInitialized();
+  const bids = await getDASBids({
+    immigrantRelatedOnly: req.query.immigrant_related === 'true',
+    withFraudIndicatorsOnly: req.query.with_fraud_indicators === 'true',
+    vendor: req.query.vendor as string | undefined,
+    status: req.query.status as string | undefined,
+  });
+  
+  const stats = {
+    total: bids.length,
+    immigrantRelated: bids.filter(b => b.isImmigrantRelated).length,
+    withFraudIndicators: bids.filter(b => b.fraudIndicators?.length > 0).length,
+    totalValue: bids.reduce((sum, b) => sum + (b.awardedValue || 0), 0),
+  };
+  
+  res.json({ bids, stats });
+}));
+
+app.post('/api/trigger/das-bids', requireAuth, asyncHandler(async (req, res) => {
+  await ensureInitialized();
+  const result = await scrapeDASBids();
+  res.json({ success: true, stats: result.stats });
+}));
+
+// --- SAM.gov Federal Awards Routes ---
+
+app.get('/api/sam-gov', asyncHandler(async (req, res) => {
+  await ensureInitialized();
+  const awards = await getSAMContracts({
+    recipient: req.query.recipient as string | undefined,
+    cfdaNumber: req.query.cfda as string | undefined,
+    withFraudIndicatorsOnly: req.query.with_fraud_indicators === 'true',
+  });
+  
+  const stats = {
+    total: awards.length,
+    totalAmount: awards.reduce((sum, a) => sum + a.awardAmount, 0),
+    withFraudIndicators: awards.filter(a => a.fraudIndicators?.length > 0).length,
+  };
+  
+  res.json({ awards, stats });
+}));
+
+app.post('/api/trigger/sam-gov', requireAuth, asyncHandler(async (req, res) => {
+  await ensureInitialized();
+  const result = await scrapeSAMGov();
+  res.json({ success: true, stats: result.stats });
+}));
+
+// --- Charitable Trusts / Form 990 Routes ---
+
+app.get('/api/charitable-trusts', asyncHandler(async (req, res) => {
+  await ensureInitialized();
+  const profiles = await getCharitableTrusts({
+    ein: req.query.ein as string | undefined,
+    withFraudIndicatorsOnly: req.query.with_fraud_indicators === 'true',
+  });
+  
+  const stats = {
+    total: profiles.length,
+    totalRevenue: profiles.reduce((sum, p) => sum + (p.totalRevenue || 0), 0),
+    withFraudIndicators: profiles.filter(p => p.fraudIndicators?.length > 0).length,
+  };
+  
+  res.json({ profiles, stats });
+}));
+
+app.post('/api/trigger/charitable-trusts', requireAuth, asyncHandler(async (req, res) => {
+  await ensureInitialized();
+  const result = await scrapeCharitableTrusts();
+  res.json({ success: true, stats: result.stats });
+}));
+
+// --- Master Cross-Reference Analysis ---
+
+app.get('/api/analysis/master-cross-reference', requireAuth, asyncHandler(async (req, res) => {
+  await ensureInitialized();
+  
+  // Gather all data sources
+  const dhhsContracts = await getDHHSContracts();
+  const dasBids = await getDASBids();
+  const samAwards = await getSAMContracts({});
+  const facAudits = await getFederalAuditReports();
+  const taggs = await getHHSTAGGSAwards();
+  const trusts = await getCharitableTrusts({});
+  
+  // Build master vendor summary
+  const vendorMap = new Map<string, any>();
+  
+  const normalize = (name: string) => name.toLowerCase().replace(/[,.'"-]/g, '').replace(/\s+(inc|llc|corp).*$/i, '').trim();
+  
+  // Process each source
+  for (const c of dhhsContracts) {
+    if (!c.awardedVendor) continue;
+    const key = normalize(c.awardedVendor);
+    if (!vendorMap.has(key)) vendorMap.set(key, { name: c.awardedVendor, state: 0, federal: 0, audits: 0, findings: 0, flags: [] });
+    vendorMap.get(key)!.state += c.awardedValue || 0;
+    if (c.fraudIndicators?.length) vendorMap.get(key)!.flags.push(...c.fraudIndicators.map((f: any) => `DHHS: ${f.type}`));
+  }
+  
+  for (const b of dasBids) {
+    if (!b.awardedVendor) continue;
+    const key = normalize(b.awardedVendor);
+    if (!vendorMap.has(key)) vendorMap.set(key, { name: b.awardedVendor, state: 0, federal: 0, audits: 0, findings: 0, flags: [] });
+    vendorMap.get(key)!.state += b.awardedValue || 0;
+    if (b.fraudIndicators?.length) vendorMap.get(key)!.flags.push(...b.fraudIndicators.map((f: any) => `DAS: ${f.type}`));
+  }
+  
+  for (const a of samAwards) {
+    const key = normalize(a.recipientName);
+    if (!vendorMap.has(key)) vendorMap.set(key, { name: a.recipientName, state: 0, federal: 0, audits: 0, findings: 0, flags: [] });
+    vendorMap.get(key)!.federal += a.awardAmount || 0;
+    if (a.fraudIndicators?.length) vendorMap.get(key)!.flags.push(...a.fraudIndicators.map((f: any) => `SAM: ${f.type}`));
+  }
+  
+  for (const t of taggs) {
+    const key = normalize(t.recipientName);
+    if (!vendorMap.has(key)) vendorMap.set(key, { name: t.recipientName, state: 0, federal: 0, audits: 0, findings: 0, flags: [] });
+    vendorMap.get(key)!.federal += t.awardAmount || 0;
+    if (t.fraudIndicators?.length) vendorMap.get(key)!.flags.push(...t.fraudIndicators.map((f: any) => `TAGGS: ${f.type}`));
+  }
+  
+  for (const audit of facAudits) {
+    const key = normalize(audit.auditeeName);
+    if (!vendorMap.has(key)) vendorMap.set(key, { name: audit.auditeeName, state: 0, federal: 0, audits: 0, findings: 0, flags: [] });
+    vendorMap.get(key)!.audits++;
+    vendorMap.get(key)!.findings += audit.numberOfFindings || 0;
+    if (audit.fraudIndicators?.length) vendorMap.get(key)!.flags.push(...audit.fraudIndicators.map((f: any) => `FAC: ${f.type}`));
+  }
+  
+  // Convert to array and sort by total value
+  const vendors = Array.from(vendorMap.values())
+    .map(v => ({ ...v, total: v.state + v.federal, flagCount: v.flags.length }))
+    .sort((a, b) => b.total - a.total);
+  
+  res.json({
+    vendors,
+    summary: {
+      totalVendors: vendors.length,
+      totalStateValue: vendors.reduce((s, v) => s + v.state, 0),
+      totalFederalValue: vendors.reduce((s, v) => s + v.federal, 0),
+      vendorsWithFlags: vendors.filter(v => v.flagCount > 0).length,
+      vendorsWithAuditFindings: vendors.filter(v => v.findings > 0).length,
     },
   });
 }));

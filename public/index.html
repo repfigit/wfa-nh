@@ -521,6 +521,11 @@
     <a href="#" data-view="providers">Providers</a>
     <a href="#" data-view="payments">Payments</a>
     <a href="#" data-view="contracts">DHHS Contracts</a>
+    <a href="#" data-view="das-bids">DAS Bids</a>
+    <a href="#" data-view="federal">Federal Awards</a>
+    <a href="#" data-view="fac-audits">FAC Audits</a>
+    <a href="#" data-view="hhs-taggs">HHS TAGGS</a>
+    <a href="#" data-view="nonprofits">Nonprofits</a>
     <a href="#" data-view="fraud">Fraud Indicators</a>
     <a href="#" data-view="sources">Data Sources</a>
     <a href="#" data-view="admin">Admin</a>
@@ -727,6 +732,276 @@
         </div>
         <div class="card-body" id="crossref-results">
           <p style="color:var(--text-light);text-align:center;">Click "Run Analysis" to compare contracts, G&C approvals, and expenditure data.</p>
+        </div>
+      </div>
+    </div>
+    
+    <!-- DAS Bids View -->
+    <div id="das-bids-view" class="view">
+      <div class="alert-box" style="border-color: #d69e2e; background: #fffbeb;">
+        <h4>🏛️ DAS Bid Board Tracking</h4>
+        <p style="font-size:0.85rem;">Tracks NH Department of Administrative Services bid announcements, RFPs, and contract awards. Identifies no-bid contracts, rapid awards, and vendor concentration.</p>
+      </div>
+      
+      <!-- DAS Bids Stats -->
+      <div class="stats-grid" id="das-bids-stats-grid">
+        <div class="stat-card"><h3>Total Bids</h3><div class="value" id="das-total">-</div></div>
+        <div class="stat-card highlight"><h3>Immigrant-Related</h3><div class="value" id="das-immigrant">-</div></div>
+        <div class="stat-card danger"><h3>With Fraud Flags</h3><div class="value" id="das-fraud">-</div></div>
+        <div class="stat-card"><h3>Total Value</h3><div class="value amount" id="das-value">-</div></div>
+      </div>
+      
+      <!-- DAS Bids Table -->
+      <div class="card">
+        <div class="card-header">
+          <h2>All DAS Bids</h2>
+          <div style="display:flex;gap:0.5rem;">
+            <label><input type="checkbox" id="das-immigrant-filter" onchange="loadDASBids()"> Immigrant-related only</label>
+            <label><input type="checkbox" id="das-fraud-filter" onchange="loadDASBids()"> With fraud flags only</label>
+            <button class="btn btn-sm" onclick="runDASScraper()" id="run-das-scraper-btn">🔄 Refresh</button>
+          </div>
+        </div>
+        <div class="card-body" style="overflow-x:auto;">
+          <table id="das-bids-table">
+            <thead>
+              <tr>
+                <th>Bid #</th>
+                <th>Title</th>
+                <th>Department</th>
+                <th>Vendor</th>
+                <th>Type</th>
+                <th>Status</th>
+                <th>Value</th>
+                <th>Fraud Flags</th>
+              </tr>
+            </thead>
+            <tbody><tr><td colspan="8" class="loading">Loading bids...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Federal Awards View -->
+    <div id="federal-view" class="view">
+      <div class="alert-box" style="border-color: #3182ce; background: #ebf8ff;">
+        <h4>🇺🇸 Federal Awards Tracking (SAM.gov)</h4>
+        <p style="font-size:0.85rem;">Tracks federal contracts and grants from SAM.gov awarded to NH refugee/immigrant service providers. Cross-references with state contracts to identify duplicate billing and federal+state overlap.</p>
+      </div>
+      
+      <!-- Federal Stats -->
+      <div class="stats-grid" id="federal-stats-grid">
+        <div class="stat-card"><h3>Total Awards</h3><div class="value" id="federal-total">-</div></div>
+        <div class="stat-card highlight"><h3>Immigrant-Related</h3><div class="value" id="federal-immigrant">-</div></div>
+        <div class="stat-card danger"><h3>With Fraud Flags</h3><div class="value" id="federal-fraud">-</div></div>
+        <div class="stat-card"><h3>Total Amount</h3><div class="value amount" id="federal-amount">-</div></div>
+      </div>
+      
+      <!-- Federal Awards by Recipient -->
+      <div class="card">
+        <div class="card-header">
+          <h2>Awards by Recipient</h2>
+        </div>
+        <div class="card-body">
+          <div id="federal-recipient-summary" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1rem;margin-bottom:1.5rem;">
+            <div class="loading">Loading recipient summary...</div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Federal Awards Table -->
+      <div class="card">
+        <div class="card-header">
+          <h2>All Federal Awards</h2>
+          <div style="display:flex;gap:0.5rem;">
+            <label><input type="checkbox" id="federal-immigrant-filter" onchange="loadFederalAwards()"> Immigrant-related only</label>
+            <label><input type="checkbox" id="federal-fraud-filter" onchange="loadFederalAwards()"> With fraud flags only</label>
+            <button class="btn btn-sm" onclick="runSAMScraper()" id="run-sam-scraper-btn">🔄 Refresh</button>
+          </div>
+        </div>
+        <div class="card-body" style="overflow-x:auto;">
+          <table id="federal-awards-table">
+            <thead>
+              <tr>
+                <th>Award ID</th>
+                <th>Title</th>
+                <th>Recipient</th>
+                <th>Agency</th>
+                <th>Type</th>
+                <th>Amount</th>
+                <th>Fraud Flags</th>
+              </tr>
+            </thead>
+            <tbody><tr><td colspan="7" class="loading">Loading federal awards...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    
+    <!-- FAC Audits View -->
+    <div id="fac-audits-view" class="view">
+      <div class="alert-box" style="border-color: #38a169; background: #f0fff4;">
+        <h4>🔍 Federal Audit Clearinghouse (FAC)</h4>
+        <p style="font-size:0.85rem;">Tracks Single Audit reports for refugee service providers from the Federal Audit Clearinghouse. Identifies audit findings, questioned costs, material weaknesses, and cross-references with state contract data.</p>
+      </div>
+      
+      <!-- FAC Stats -->
+      <div class="stats-grid" id="fac-stats-grid">
+        <div class="stat-card"><h3>Total Audits</h3><div class="value" id="fac-total">-</div></div>
+        <div class="stat-card highlight"><h3>Refugee-Related</h3><div class="value" id="fac-refugee">-</div></div>
+        <div class="stat-card warning"><h3>With Findings</h3><div class="value" id="fac-findings">-</div></div>
+        <div class="stat-card danger"><h3>With Fraud Flags</h3><div class="value" id="fac-fraud">-</div></div>
+      </div>
+      
+      <!-- FAC Auditee Summary -->
+      <div class="card">
+        <div class="card-header">
+          <h2>Audits by Organization</h2>
+          <div style="display:flex;gap:0.5rem;">
+            <label><input type="checkbox" id="fac-refugee-filter" onchange="loadFACAudits()"> Refugee-related only</label>
+            <label><input type="checkbox" id="fac-fraud-filter" onchange="loadFACAudits()"> With fraud flags only</label>
+            <button class="btn btn-sm" onclick="runFACScraper()" id="run-fac-scraper-btn">🔄 Refresh</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div id="fac-auditee-summary" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:1rem;margin-bottom:1.5rem;">
+            <div class="loading">Loading auditee summary...</div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- FAC Audits Table -->
+      <div class="card">
+        <div class="card-header">
+          <h2>Single Audit Reports</h2>
+        </div>
+        <div class="card-body" style="overflow-x:auto;">
+          <table id="fac-audits-table">
+            <thead>
+              <tr>
+                <th>Auditee</th>
+                <th>FY</th>
+                <th>Total Expended</th>
+                <th>Refugee Programs</th>
+                <th>Material Weakness</th>
+                <th>Findings</th>
+                <th>Fraud Flags</th>
+              </tr>
+            </thead>
+            <tbody><tr><td colspan="7" class="loading">Loading audits...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    
+    <!-- HHS TAGGS View -->
+    <div id="hhs-taggs-view" class="view">
+      <div class="alert-box" style="border-color: #d69e2e; background: #fffaf0;">
+        <h4>💰 HHS TAGGS (HHS Grant Awards)</h4>
+        <p style="font-size:0.85rem;">Tracks HHS grant awards from TAGGS including refugee programs (93.566, 93.567, 93.576) and CCDF childcare programs (93.575, 93.596). Cross-references with state contracts to identify potential double-billing.</p>
+      </div>
+      
+      <!-- TAGGS Stats -->
+      <div class="stats-grid" id="taggs-stats-grid">
+        <div class="stat-card"><h3>Total Awards</h3><div class="value" id="taggs-total">-</div></div>
+        <div class="stat-card highlight"><h3>Refugee Programs</h3><div class="value" id="taggs-refugee">-</div></div>
+        <div class="stat-card"><h3>Childcare Programs</h3><div class="value" id="taggs-childcare">-</div></div>
+        <div class="stat-card"><h3>Total Amount</h3><div class="value amount" id="taggs-amount">-</div></div>
+      </div>
+      
+      <!-- TAGGS Program Summary -->
+      <div class="card">
+        <div class="card-header">
+          <h2>Awards by Program</h2>
+          <div style="display:flex;gap:0.5rem;">
+            <label><input type="checkbox" id="taggs-refugee-filter" onchange="loadTAGGSAwards()"> Refugee programs only</label>
+            <label><input type="checkbox" id="taggs-childcare-filter" onchange="loadTAGGSAwards()"> Childcare programs only</label>
+            <button class="btn btn-sm" onclick="runTAGGSScraper()" id="run-taggs-scraper-btn">🔄 Refresh</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div id="taggs-program-summary" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1rem;margin-bottom:1.5rem;">
+            <div class="loading">Loading program summary...</div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- TAGGS Awards Table -->
+      <div class="card">
+        <div class="card-header">
+          <h2>All HHS Grant Awards</h2>
+        </div>
+        <div class="card-body" style="overflow-x:auto;">
+          <table id="taggs-awards-table">
+            <thead>
+              <tr>
+                <th>Recipient</th>
+                <th>ALN</th>
+                <th>Program</th>
+                <th>FY</th>
+                <th>Amount</th>
+                <th>Action</th>
+                <th>Fraud Flags</th>
+              </tr>
+            </thead>
+            <tbody><tr><td colspan="7" class="loading">Loading awards...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Nonprofits View -->
+    <div id="nonprofits-view" class="view">
+      <div class="alert-box" style="border-color: #805ad5; background: #faf5ff;">
+        <h4>🏢 Nonprofit Financial Tracking</h4>
+        <p style="font-size:0.85rem;">Tracks NH Charitable Trusts registry and Form 990 data for refugee service providers. Monitors executive compensation, overhead ratios, and revenue/expense discrepancies.</p>
+      </div>
+      
+      <!-- Nonprofit Stats -->
+      <div class="stats-grid" id="nonprofit-stats-grid">
+        <div class="stat-card"><h3>Total Nonprofits</h3><div class="value" id="nonprofit-total">-</div></div>
+        <div class="stat-card highlight"><h3>Refugee Providers</h3><div class="value" id="nonprofit-refugee">-</div></div>
+        <div class="stat-card danger"><h3>With Fraud Flags</h3><div class="value" id="nonprofit-fraud">-</div></div>
+        <div class="stat-card"><h3>Total Gov Grants</h3><div class="value amount" id="nonprofit-grants">-</div></div>
+      </div>
+      
+      <!-- Nonprofit Cards -->
+      <div class="card">
+        <div class="card-header">
+          <h2>Nonprofit Organizations</h2>
+          <div style="display:flex;gap:0.5rem;">
+            <label><input type="checkbox" id="nonprofit-refugee-filter" onchange="loadNonprofits()"> Refugee providers only</label>
+            <label><input type="checkbox" id="nonprofit-fraud-filter" onchange="loadNonprofits()"> With fraud flags only</label>
+            <button class="btn btn-sm" onclick="runTrustsScraper()" id="run-trusts-scraper-btn">🔄 Refresh</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div id="nonprofit-cards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(350px,1fr));gap:1rem;">
+            <div class="loading">Loading nonprofits...</div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Nonprofit Details Table -->
+      <div class="card">
+        <div class="card-header">
+          <h2>Financial Details</h2>
+        </div>
+        <div class="card-body" style="overflow-x:auto;">
+          <table id="nonprofit-table">
+            <thead>
+              <tr>
+                <th>Organization</th>
+                <th>Total Revenue</th>
+                <th>Gov Grants</th>
+                <th>Total Expenses</th>
+                <th>Program %</th>
+                <th>Overhead %</th>
+                <th>Top Exec Comp</th>
+                <th>Fraud Flags</th>
+              </tr>
+            </thead>
+            <tbody><tr><td colspan="8" class="loading">Loading financials...</td></tr></tbody>
+          </table>
         </div>
       </div>
     </div>
@@ -1002,7 +1277,7 @@
     });
     
     function showView(viewName) {
-      const validViews = ['dashboard', 'providers', 'payments', 'contracts', 'fraud', 'sources', 'admin'];
+      const validViews = ['dashboard', 'providers', 'payments', 'contracts', 'das-bids', 'federal', 'fac-audits', 'hhs-taggs', 'nonprofits', 'fraud', 'sources', 'admin'];
       if (!validViews.includes(viewName)) return;
 
       document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
@@ -1017,6 +1292,11 @@
         case 'providers': loadProviders(); break;
         case 'payments': loadPayments(); break;
         case 'contracts': loadContracts(); break;
+        case 'das-bids': loadDASBids(); break;
+        case 'federal': loadFederalAwards(); break;
+        case 'fac-audits': loadFACAudits(); break;
+        case 'hhs-taggs': loadTAGGSAwards(); break;
+        case 'nonprofits': loadNonprofits(); break;
         case 'fraud': loadFraud(); break;
         case 'sources': loadDataSources(); loadSourceTables(); break;
       }
@@ -1028,6 +1308,11 @@
         case 'providers': loadProviders(); break;
         case 'payments': loadPayments(); break;
         case 'contracts': loadContracts(); break;
+        case 'das-bids': loadDASBids(); break;
+        case 'federal': loadFederalAwards(); break;
+        case 'fac-audits': loadFACAudits(); break;
+        case 'hhs-taggs': loadTAGGSAwards(); break;
+        case 'nonprofits': loadNonprofits(); break;
         case 'fraud': loadFraudIndicators(); break;
         case 'sources': loadDataSources(); loadSourceTables(); break;
       }
@@ -1811,6 +2096,702 @@
     
     // ==========================================
     // End DHHS Contracts Functions
+    // ==========================================
+
+    // ==========================================
+    // DAS Bids Functions
+    // ==========================================
+    
+    async function loadDASBids() {
+      const immigrantOnly = document.getElementById('das-immigrant-filter')?.checked || false;
+      const fraudOnly = document.getElementById('das-fraud-filter')?.checked || false;
+      
+      try {
+        const params = new URLSearchParams();
+        if (immigrantOnly) params.append('immigrant_related', 'true');
+        if (fraudOnly) params.append('with_fraud_indicators', 'true');
+        
+        const res = await fetch(`${API_BASE}/das-bids?${params}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        
+        // Update stats
+        document.getElementById('das-total').textContent = data.stats.total;
+        document.getElementById('das-immigrant').textContent = data.stats.immigrantRelated;
+        document.getElementById('das-fraud').textContent = data.stats.withFraudIndicators;
+        document.getElementById('das-value').textContent = formatCurrency(data.stats.totalValue);
+        
+        // Render bids table
+        const tbody = document.querySelector('#das-bids-table tbody');
+        if (data.bids.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-light);">No bids found.</td></tr>';
+        } else {
+          tbody.innerHTML = data.bids.map(b => {
+            const fraudBadges = (b.fraudIndicators || []).map(f => 
+              `<span class="badge badge-${f.severity}" title="${f.description}">${f.type}</span>`
+            ).join(' ');
+            
+            return `
+              <tr>
+                <td class="clickable">${b.bidNumber}</td>
+                <td>${b.title}</td>
+                <td>${b.department}</td>
+                <td>${b.awardedVendor || '<span style="color:var(--text-light);">-</span>'}</td>
+                <td><span class="badge ${b.bidType === 'sole_source' ? 'badge-high' : ''}">${b.bidType}</span></td>
+                <td><span class="badge badge-${b.status === 'awarded' ? 'resolved' : 'open'}">${b.status}</span></td>
+                <td class="amount">${b.awardedValue ? formatCurrency(b.awardedValue) : '-'}</td>
+                <td>${fraudBadges || '-'}</td>
+              </tr>
+            `;
+          }).join('');
+        }
+      } catch (e) {
+        console.error('Failed to load DAS bids:', e);
+        document.querySelector('#das-bids-table tbody').innerHTML = 
+          `<tr><td colspan="8" class="error">Failed to load bids: ${e.message}</td></tr>`;
+      }
+    }
+    
+    async function runDASScraper() {
+      const btn = document.getElementById('run-das-scraper-btn');
+      const key = getApiKey();
+      if (!key) {
+        alert('Admin login required to run scrapers. Go to Admin tab first.');
+        return;
+      }
+      
+      btn.disabled = true;
+      btn.textContent = '⏳ Running...';
+      
+      try {
+        const res = await fetch(`${API_BASE}/trigger/das-bids`, {
+          method: 'POST',
+          headers: getAuthHeaders()
+        });
+        
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || `HTTP ${res.status}`);
+        }
+        
+        const data = await res.json();
+        alert(`DAS Bids scraper completed!\n\nTotal: ${data.stats.total}\nImmigrant-related: ${data.stats.immigrantRelated}\nWith fraud flags: ${data.stats.withFraudIndicators}`);
+        loadDASBids();
+      } catch (e) {
+        alert('Scraper failed: ' + e.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '🔄 Refresh';
+      }
+    }
+    
+    // ==========================================
+    // Federal Awards (SAM.gov) Functions
+    // ==========================================
+    
+    async function loadFederalAwards() {
+      const immigrantOnly = document.getElementById('federal-immigrant-filter')?.checked || false;
+      const fraudOnly = document.getElementById('federal-fraud-filter')?.checked || false;
+      
+      try {
+        const params = new URLSearchParams();
+        if (immigrantOnly) params.append('immigrant_related', 'true');
+        if (fraudOnly) params.append('with_fraud_indicators', 'true');
+        
+        const res = await fetch(`${API_BASE}/sam-gov?${params}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        
+        // Update stats
+        document.getElementById('federal-total').textContent = data.stats.total;
+        document.getElementById('federal-immigrant').textContent = data.stats.immigrantRelated;
+        document.getElementById('federal-fraud').textContent = data.stats.withFraudIndicators;
+        document.getElementById('federal-amount').textContent = formatCurrency(data.stats.totalAmount);
+        
+        // Render recipient summary cards
+        const recipientSummary = document.getElementById('federal-recipient-summary');
+        const recipients = Object.entries(data.stats.byRecipient).sort((a, b) => b[1].totalAmount - a[1].totalAmount);
+        
+        if (recipients.length === 0) {
+          recipientSummary.innerHTML = '<p style="color:var(--text-light);">No federal awards found.</p>';
+        } else {
+          recipientSummary.innerHTML = recipients.map(([recipient, info]) => `
+            <div class="source-card" style="border-left: 3px solid #3182ce;">
+              <h4>${recipient}</h4>
+              <div style="font-size:0.85rem;">
+                <div><strong>Awards:</strong> ${info.count}</div>
+                <div><strong>Total Amount:</strong> <span class="amount">${formatCurrency(info.totalAmount)}</span></div>
+              </div>
+            </div>
+          `).join('');
+        }
+        
+        // Render awards table
+        const tbody = document.querySelector('#federal-awards-table tbody');
+        if (data.contracts.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-light);">No federal awards found.</td></tr>';
+        } else {
+          tbody.innerHTML = data.contracts.map(c => {
+            const fraudBadges = (c.fraudIndicators || []).map(f => 
+              `<span class="badge badge-${f.severity}" title="${f.description}">${f.type}</span>`
+            ).join(' ');
+            
+            return `
+              <tr>
+                <td class="clickable">${c.awardId}</td>
+                <td>${c.title}</td>
+                <td>${c.recipientName}</td>
+                <td>${c.awardingSubAgency || c.awardingAgency}</td>
+                <td><span class="badge">${c.awardType}</span></td>
+                <td class="amount">${formatCurrency(c.awardAmount)}</td>
+                <td>${fraudBadges || '-'}</td>
+              </tr>
+            `;
+          }).join('');
+        }
+      } catch (e) {
+        console.error('Failed to load federal awards:', e);
+        document.querySelector('#federal-awards-table tbody').innerHTML = 
+          `<tr><td colspan="7" class="error">Failed to load awards: ${e.message}</td></tr>`;
+      }
+    }
+    
+    async function runSAMScraper() {
+      const btn = document.getElementById('run-sam-scraper-btn');
+      const key = getApiKey();
+      if (!key) {
+        alert('Admin login required to run scrapers. Go to Admin tab first.');
+        return;
+      }
+      
+      btn.disabled = true;
+      btn.textContent = '⏳ Running...';
+      
+      try {
+        const res = await fetch(`${API_BASE}/trigger/sam-gov`, {
+          method: 'POST',
+          headers: getAuthHeaders()
+        });
+        
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || `HTTP ${res.status}`);
+        }
+        
+        const data = await res.json();
+        alert(`SAM.gov scraper completed!\n\nTotal: ${data.stats.total}\nTotal Federal Amount: ${formatCurrency(data.stats.totalFederalAmount)}\nImmigrant-related: ${data.stats.immigrantRelated}`);
+        loadFederalAwards();
+      } catch (e) {
+        alert('Scraper failed: ' + e.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '🔄 Refresh';
+      }
+    }
+    
+    // ==========================================
+    // FAC Audits Functions
+    // ==========================================
+    
+    async function loadFACAudits() {
+      const refugeeOnly = document.getElementById('fac-refugee-filter')?.checked || false;
+      const fraudOnly = document.getElementById('fac-fraud-filter')?.checked || false;
+      
+      try {
+        const params = new URLSearchParams();
+        if (refugeeOnly) params.append('refugee_related', 'true');
+        if (fraudOnly) params.append('with_fraud_indicators', 'true');
+        
+        const res = await fetch(`${API_BASE}/fac-audits?${params}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        
+        // Update stats
+        document.getElementById('fac-total').textContent = data.stats.total;
+        document.getElementById('fac-refugee').textContent = data.stats.refugeeRelated;
+        document.getElementById('fac-findings').textContent = data.stats.withFindings;
+        document.getElementById('fac-fraud').textContent = data.stats.withFraudIndicators;
+        
+        // Render auditee summary cards
+        const auditeeSummary = document.getElementById('fac-auditee-summary');
+        const auditees = Object.entries(data.stats.byAuditee || {}).sort((a, b) => b[1].totalExpended - a[1].totalExpended);
+        
+        if (auditees.length === 0) {
+          auditeeSummary.innerHTML = '<p style="color:var(--text-light);">No audits found. Run the FAC scraper to fetch data.</p>';
+        } else {
+          auditeeSummary.innerHTML = auditees.map(([auditee, info]) => `
+            <div class="source-card" style="border-left: 3px solid ${info.hasFraudFlags ? 'var(--danger)' : '#38a169'};">
+              <h4>${auditee}</h4>
+              <div style="font-size:0.85rem;">
+                <div><strong>Audits:</strong> ${info.count}</div>
+                <div><strong>Total Expended:</strong> <span class="amount">${formatCurrency(info.totalExpended)}</span></div>
+                ${info.hasFraudFlags ? '<div><span class="badge badge-high">HAS FRAUD FLAGS</span></div>' : ''}
+              </div>
+            </div>
+          `).join('');
+        }
+        
+        // Render audits table
+        const tbody = document.querySelector('#fac-audits-table tbody');
+        if (data.records.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-light);">No audits found.</td></tr>';
+        } else {
+          tbody.innerHTML = data.records.map(r => {
+            const fraudBadges = (r.fraudIndicators || []).map(f => 
+              `<span class="badge badge-${f.severity}" title="${f.description}">${f.type}</span>`
+            ).join(' ');
+            
+            return `
+              <tr onclick="showFACDetail('${r.reportId}')" style="cursor:pointer;">
+                <td class="clickable">${r.auditeeName}</td>
+                <td>${r.auditYear}</td>
+                <td class="amount">${formatCurrency(r.totalAmountExpended)}</td>
+                <td class="amount">${formatCurrency(r.refugeeProgramExpenditures)}</td>
+                <td>${r.hasMaterialWeakness ? '<span class="badge badge-high">YES</span>' : '-'}</td>
+                <td>${r.findings?.length || 0}</td>
+                <td>${fraudBadges || '-'}</td>
+              </tr>
+            `;
+          }).join('');
+        }
+      } catch (e) {
+        console.error('Failed to load FAC audits:', e);
+        document.querySelector('#fac-audits-table tbody').innerHTML = 
+          `<tr><td colspan="7" class="error">Failed to load audits: ${e.message}</td></tr>`;
+      }
+    }
+    
+    async function showFACDetail(reportId) {
+      try {
+        const res = await fetch(`${API_BASE}/fac-audits/${encodeURIComponent(reportId)}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const r = data.record;
+        
+        const findingsList = (r.findings || []).map(f => `
+          <div class="alert-box ${f.is_questioned_costs || f.is_material_weakness ? 'danger' : ''}" style="margin-bottom:0.5rem;">
+            <strong>Finding ${f.reference_number}</strong>
+            <p style="font-size:0.8rem;margin-top:0.25rem;">
+              ${f.is_material_weakness ? '<span class="badge badge-high">Material Weakness</span> ' : ''}
+              ${f.is_significant_deficiency ? '<span class="badge badge-medium">Significant Deficiency</span> ' : ''}
+              ${f.is_questioned_costs ? '<span class="badge badge-high">Questioned Costs</span> ' : ''}
+              ${f.is_repeat_finding ? '<span class="badge badge-medium">Repeat Finding</span> ' : ''}
+            </p>
+          </div>
+        `).join('') || '<p style="color:var(--text-light);">No findings</p>';
+        
+        const fraudList = (r.fraudIndicators || []).map(f => `
+          <div class="alert-box ${f.severity === 'high' || f.severity === 'critical' ? 'danger' : ''}" style="margin-bottom:0.5rem;">
+            <strong>${severityBadge(f.severity)} ${f.type}</strong>
+            <p style="font-size:0.85rem;margin-top:0.25rem;">${f.description}</p>
+          </div>
+        `).join('');
+        
+        const content = `
+          <div class="detail-grid">
+            <div class="detail-item"><label>Report ID</label><div class="value">${r.reportId}</div></div>
+            <div class="detail-item"><label>Audit Year</label><div class="value">${r.auditYear}</div></div>
+            <div class="detail-item"><label>Location</label><div class="value">${r.auditeeCity}, ${r.auditeeState}</div></div>
+            <div class="detail-item"><label>Entity Type</label><div class="value">${r.entityType || '-'}</div></div>
+          </div>
+          
+          <h4 style="margin-top:1rem;">Financial Summary</h4>
+          <div class="detail-grid">
+            <div class="detail-item"><label>Total Federal Expended</label><div class="value amount">${formatCurrency(r.totalAmountExpended)}</div></div>
+            <div class="detail-item"><label>Refugee Program Expended</label><div class="value amount">${formatCurrency(r.refugeeProgramExpenditures)}</div></div>
+            <div class="detail-item"><label>Low Risk Auditee</label><div class="value">${r.isLowRisk ? '<span class="badge badge-low">Yes</span>' : '<span class="badge badge-medium">No</span>'}</div></div>
+            <div class="detail-item"><label>Auditor</label><div class="value">${r.auditorFirm || '-'}</div></div>
+          </div>
+          
+          <h4 style="margin-top:1rem;">Audit Issues</h4>
+          <div class="detail-grid">
+            <div class="detail-item"><label>Material Weakness</label><div class="value">${r.hasMaterialWeakness ? '<span class="badge badge-high">YES</span>' : 'No'}</div></div>
+            <div class="detail-item"><label>Significant Deficiency</label><div class="value">${r.hasSignificantDeficiency ? '<span class="badge badge-medium">YES</span>' : 'No'}</div></div>
+            <div class="detail-item"><label>Material Noncompliance</label><div class="value">${r.hasMaterialNoncompliance ? '<span class="badge badge-high">YES</span>' : 'No'}</div></div>
+            <div class="detail-item"><label>Going Concern</label><div class="value">${r.hasGoingConcern ? '<span class="badge badge-critical">YES</span>' : 'No'}</div></div>
+          </div>
+          
+          <h4 style="margin-top:1rem;">Audit Findings (${r.findings?.length || 0})</h4>
+          ${findingsList}
+          
+          ${fraudList ? `
+          <h4 style="margin-top:1rem;">⚠️ Fraud Indicators</h4>
+          ${fraudList}
+          ` : ''}
+          
+          ${r.matchedKeywords?.length ? `
+          <h4 style="margin-top:1rem;">Matched Keywords</h4>
+          <div>${r.matchedKeywords.map(k => `<span class="badge badge-immigrant">${k}</span>`).join(' ')}</div>
+          ` : ''}
+          
+          <p style="margin-top:1rem;"><a href="${r.sourceUrl}" target="_blank" class="btn btn-outline">View on FAC.gov</a></p>
+        `;
+        
+        openModal('provider-modal');
+        document.getElementById('provider-modal-title').textContent = r.auditeeName;
+        document.getElementById('provider-modal-body').innerHTML = content;
+      } catch (e) {
+        alert('Failed to load audit details: ' + e.message);
+      }
+    }
+    
+    async function runFACScraper() {
+      const btn = document.getElementById('run-fac-scraper-btn');
+      const key = getApiKey();
+      if (!key) {
+        alert('Admin login required to run scrapers. Go to Admin tab first.');
+        return;
+      }
+      
+      btn.disabled = true;
+      btn.textContent = '⏳ Running...';
+      
+      try {
+        const res = await fetch(`${API_BASE}/trigger/fac-audits`, {
+          method: 'POST',
+          headers: getAuthHeaders()
+        });
+        
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || `HTTP ${res.status}`);
+        }
+        
+        const data = await res.json();
+        alert(`FAC scraper completed!\n\nTotal Audits: ${data.stats.total}\nRefugee-Related: ${data.stats.refugeeRelated}\nWith Findings: ${data.stats.withFindings}\nWith Fraud Flags: ${data.stats.withFraudIndicators}`);
+        loadFACAudits();
+      } catch (e) {
+        alert('Scraper failed: ' + e.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '🔄 Refresh';
+      }
+    }
+    
+    // ==========================================
+    // HHS TAGGS Functions
+    // ==========================================
+    
+    async function loadTAGGSAwards() {
+      const refugeeOnly = document.getElementById('taggs-refugee-filter')?.checked || false;
+      const childcareOnly = document.getElementById('taggs-childcare-filter')?.checked || false;
+      
+      try {
+        const params = new URLSearchParams();
+        if (refugeeOnly) params.append('refugee_related', 'true');
+        if (childcareOnly) params.append('childcare_related', 'true');
+        
+        const res = await fetch(`${API_BASE}/hhs-taggs?${params}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        
+        // Update stats
+        document.getElementById('taggs-total').textContent = data.stats.total;
+        document.getElementById('taggs-refugee').textContent = data.stats.refugeeRelated;
+        document.getElementById('taggs-childcare').textContent = data.stats.childcareRelated;
+        document.getElementById('taggs-amount').textContent = formatCurrency(data.stats.totalAwardAmount);
+        
+        // Render program summary cards
+        const programSummary = document.getElementById('taggs-program-summary');
+        const programs = Object.entries(data.stats.byProgram || {}).sort((a, b) => b[1].amount - a[1].amount);
+        
+        if (programs.length === 0) {
+          programSummary.innerHTML = '<p style="color:var(--text-light);">No awards found. Run the TAGGS scraper to fetch data.</p>';
+        } else {
+          const programColors = {
+            '93.566': '#38a169',
+            '93.567': '#38a169',
+            '93.576': '#38a169',
+            '93.575': '#3182ce',
+            '93.596': '#3182ce',
+          };
+          programSummary.innerHTML = programs.map(([aln, info]) => `
+            <div class="source-card" style="border-left: 3px solid ${programColors[aln] || '#805ad5'};">
+              <h4>${aln}</h4>
+              <p style="font-size:0.8rem;color:var(--text-light);margin-bottom:0.5rem;">${info.name}</p>
+              <div style="font-size:0.85rem;">
+                <div><strong>Awards:</strong> ${info.count}</div>
+                <div><strong>Total Amount:</strong> <span class="amount">${formatCurrency(info.amount)}</span></div>
+              </div>
+            </div>
+          `).join('');
+        }
+        
+        // Render awards table
+        const tbody = document.querySelector('#taggs-awards-table tbody');
+        if (data.records.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-light);">No awards found.</td></tr>';
+        } else {
+          tbody.innerHTML = data.records.map(r => {
+            const fraudBadges = (r.fraudIndicators || []).map(f => 
+              `<span class="badge badge-${f.severity}" title="${f.description}">${f.type}</span>`
+            ).join(' ');
+            
+            const categoryBadge = r.isRefugeeRelated 
+              ? '<span class="badge badge-immigrant">Refugee</span>' 
+              : r.isChildcareRelated 
+                ? '<span class="badge badge-ccdf">Childcare</span>' 
+                : '';
+            
+            return `
+              <tr onclick="showTAGGSDetail('${r.awardId}')" style="cursor:pointer;">
+                <td class="clickable">${r.recipientName}</td>
+                <td><span class="badge">${r.aln}</span></td>
+                <td title="${r.programName}">${r.programName.substring(0, 30)}${r.programName.length > 30 ? '...' : ''}</td>
+                <td>${r.fiscalYear}</td>
+                <td class="amount">${formatCurrency(r.awardAmount)}</td>
+                <td>${r.actionType} ${categoryBadge}</td>
+                <td>${fraudBadges || '-'}</td>
+              </tr>
+            `;
+          }).join('');
+        }
+      } catch (e) {
+        console.error('Failed to load TAGGS awards:', e);
+        document.querySelector('#taggs-awards-table tbody').innerHTML = 
+          `<tr><td colspan="7" class="error">Failed to load awards: ${e.message}</td></tr>`;
+      }
+    }
+    
+    async function showTAGGSDetail(awardId) {
+      try {
+        const res = await fetch(`${API_BASE}/hhs-taggs/${encodeURIComponent(awardId)}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const r = data.record;
+        
+        const fraudList = (r.fraudIndicators || []).map(f => `
+          <div class="alert-box ${f.severity === 'high' || f.severity === 'critical' ? 'danger' : ''}" style="margin-bottom:0.5rem;">
+            <strong>${severityBadge(f.severity)} ${f.type}</strong>
+            <p style="font-size:0.85rem;margin-top:0.25rem;">${f.description}</p>
+          </div>
+        `).join('');
+        
+        const relatedDHHS = (data.relatedData?.dhhsContracts || []).map(c => `
+          <tr><td>${c.rfpNumber}</td><td>${c.title}</td><td class="amount">${formatCurrency(c.awardedValue)}</td></tr>
+        `).join('') || '<tr><td colspan="3" style="color:var(--text-light);">No related state contracts found</td></tr>';
+        
+        const content = `
+          <div class="detail-grid">
+            <div class="detail-item"><label>Award ID</label><div class="value">${r.awardId}</div></div>
+            <div class="detail-item"><label>Grant Number</label><div class="value">${r.grantNumber || '-'}</div></div>
+            <div class="detail-item"><label>Operating Division</label><div class="value">${r.opdiv || '-'}</div></div>
+            <div class="detail-item"><label>Fiscal Year</label><div class="value">${r.fiscalYear}</div></div>
+          </div>
+          
+          <h4 style="margin-top:1rem;">Recipient</h4>
+          <div class="detail-grid">
+            <div class="detail-item"><label>Name</label><div class="value">${r.recipientName}</div></div>
+            <div class="detail-item"><label>Location</label><div class="value">${r.recipientCity}, ${r.recipientState}</div></div>
+          </div>
+          
+          <h4 style="margin-top:1rem;">Program Details</h4>
+          <div class="detail-grid">
+            <div class="detail-item"><label>ALN (CFDA)</label><div class="value"><span class="badge">${r.aln}</span></div></div>
+            <div class="detail-item"><label>Program Name</label><div class="value">${r.programName}</div></div>
+            <div class="detail-item"><label>Category</label><div class="value">${r.isRefugeeRelated ? '<span class="badge badge-immigrant">Refugee Program</span>' : r.isChildcareRelated ? '<span class="badge badge-ccdf">Childcare Program</span>' : r.programCategory}</div></div>
+            <div class="detail-item"><label>Action Type</label><div class="value">${r.actionType}</div></div>
+          </div>
+          
+          <h4 style="margin-top:1rem;">Award Amount</h4>
+          <div class="stat-card" style="display:inline-block;">
+            <div class="value amount" style="font-size:2rem;">${formatCurrency(r.awardAmount)}</div>
+          </div>
+          
+          ${r.projectTitle ? `
+          <h4 style="margin-top:1rem;">Project Title</h4>
+          <p style="font-size:0.9rem;background:var(--bg);padding:0.75rem;border-radius:6px;">${r.projectTitle}</p>
+          ` : ''}
+          
+          ${fraudList ? `
+          <h4 style="margin-top:1rem;">⚠️ Fraud Indicators</h4>
+          ${fraudList}
+          ` : ''}
+          
+          <h4 style="margin-top:1rem;">Related State Contracts</h4>
+          <table style="font-size:0.85rem;">
+            <thead><tr><th>RFP/RFA</th><th>Title</th><th>Value</th></tr></thead>
+            <tbody>${relatedDHHS}</tbody>
+          </table>
+          
+          ${r.matchedKeywords?.length ? `
+          <h4 style="margin-top:1rem;">Matched Keywords</h4>
+          <div>${r.matchedKeywords.map(k => `<span class="badge badge-immigrant">${k}</span>`).join(' ')}</div>
+          ` : ''}
+          
+          <p style="margin-top:1rem;"><a href="${r.sourceUrl}" target="_blank" class="btn btn-outline">View on TAGGS</a></p>
+        `;
+        
+        openModal('provider-modal');
+        document.getElementById('provider-modal-title').textContent = `${r.aln} - ${r.programName}`;
+        document.getElementById('provider-modal-body').innerHTML = content;
+      } catch (e) {
+        alert('Failed to load award details: ' + e.message);
+      }
+    }
+    
+    async function runTAGGSScraper() {
+      const btn = document.getElementById('run-taggs-scraper-btn');
+      const key = getApiKey();
+      if (!key) {
+        alert('Admin login required to run scrapers. Go to Admin tab first.');
+        return;
+      }
+      
+      btn.disabled = true;
+      btn.textContent = '⏳ Running...';
+      
+      try {
+        const res = await fetch(`${API_BASE}/trigger/hhs-taggs`, {
+          method: 'POST',
+          headers: getAuthHeaders()
+        });
+        
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || `HTTP ${res.status}`);
+        }
+        
+        const data = await res.json();
+        alert(`HHS TAGGS scraper completed!\n\nTotal Awards: ${data.stats.total}\nRefugee Programs: ${data.stats.refugeeRelated}\nChildcare Programs: ${data.stats.childcareRelated}\nTotal Amount: ${formatCurrency(data.stats.totalAwardAmount)}`);
+        loadTAGGSAwards();
+      } catch (e) {
+        alert('Scraper failed: ' + e.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '🔄 Refresh';
+      }
+    }
+    
+    // ==========================================
+    // Nonprofits (Charitable Trusts) Functions
+    // ==========================================
+    
+    async function loadNonprofits() {
+      const refugeeOnly = document.getElementById('nonprofit-refugee-filter')?.checked || false;
+      const fraudOnly = document.getElementById('nonprofit-fraud-filter')?.checked || false;
+      
+      try {
+        const params = new URLSearchParams();
+        if (refugeeOnly) params.append('refugee_providers', 'true');
+        if (fraudOnly) params.append('with_fraud_indicators', 'true');
+        
+        const res = await fetch(`${API_BASE}/charitable-trusts?${params}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        
+        // Update stats
+        document.getElementById('nonprofit-total').textContent = data.stats.total;
+        document.getElementById('nonprofit-refugee').textContent = data.stats.refugeeProviders;
+        document.getElementById('nonprofit-fraud').textContent = data.stats.withFraudIndicators;
+        document.getElementById('nonprofit-grants').textContent = formatCurrency(data.stats.totalGovGrants);
+        
+        // Render nonprofit cards
+        const cardsContainer = document.getElementById('nonprofit-cards');
+        if (data.trusts.length === 0) {
+          cardsContainer.innerHTML = '<p style="color:var(--text-light);">No nonprofits found.</p>';
+        } else {
+          cardsContainer.innerHTML = data.trusts.map(t => {
+            const form990 = t.form990Data;
+            const overheadRatio = form990 ? (((form990.administrativeExpenses || 0) + (form990.fundraisingExpenses || 0)) / form990.totalExpenses * 100).toFixed(1) : '-';
+            const fraudCount = (t.fraudIndicators || []).filter(f => f.type !== 'government_funding_summary').length;
+            
+            return `
+              <div class="source-card" style="border-left: 3px solid ${fraudCount > 0 ? 'var(--danger)' : '#805ad5'};">
+                <h4>${t.organizationName}</h4>
+                <div style="font-size:0.8rem; color:var(--text-light); margin-bottom:0.5rem;">
+                  ${t.city ? `${t.city}, ${t.state}` : ''} ${t.ein ? `| EIN: ${t.ein}` : ''}
+                </div>
+                ${form990 ? `
+                <div style="font-size:0.85rem;">
+                  <div><strong>Revenue:</strong> <span class="amount">${formatCurrency(form990.totalRevenue)}</span></div>
+                  <div><strong>Gov Grants:</strong> <span class="amount">${formatCurrency(form990.governmentGrants || 0)}</span></div>
+                  <div><strong>Overhead:</strong> ${overheadRatio}%</div>
+                  ${form990.executiveCompensation?.length ? `
+                  <div><strong>Top Exec:</strong> ${form990.executiveCompensation[0].title} - ${formatCurrency(form990.executiveCompensation[0].compensation)}</div>
+                  ` : ''}
+                </div>
+                ` : '<div style="color:var(--text-light);">No Form 990 data</div>'}
+                ${fraudCount > 0 ? `
+                <div style="margin-top:0.5rem;">
+                  <span class="badge badge-high">${fraudCount} fraud flag${fraudCount > 1 ? 's' : ''}</span>
+                </div>
+                ` : ''}
+              </div>
+            `;
+          }).join('');
+        }
+        
+        // Render nonprofit table
+        const tbody = document.querySelector('#nonprofit-table tbody');
+        if (data.trusts.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-light);">No nonprofits found.</td></tr>';
+        } else {
+          tbody.innerHTML = data.trusts.map(t => {
+            const form990 = t.form990Data;
+            const programRatio = form990 && form990.totalExpenses ? ((form990.programExpenses || 0) / form990.totalExpenses * 100).toFixed(1) : '-';
+            const overheadRatio = form990 && form990.totalExpenses ? (((form990.administrativeExpenses || 0) + (form990.fundraisingExpenses || 0)) / form990.totalExpenses * 100).toFixed(1) : '-';
+            const topExec = form990?.executiveCompensation?.[0];
+            const fraudBadges = (t.fraudIndicators || []).filter(f => f.type !== 'government_funding_summary').map(f => 
+              `<span class="badge badge-${f.severity}" title="${f.description}">${f.type}</span>`
+            ).join(' ');
+            
+            return `
+              <tr>
+                <td><strong>${t.organizationName}</strong></td>
+                <td class="amount">${form990 ? formatCurrency(form990.totalRevenue) : '-'}</td>
+                <td class="amount">${form990 ? formatCurrency(form990.governmentGrants || 0) : '-'}</td>
+                <td class="amount">${form990 ? formatCurrency(form990.totalExpenses) : '-'}</td>
+                <td>${programRatio}%</td>
+                <td class="${parseFloat(overheadRatio) > 25 ? 'badge-high' : ''}">${overheadRatio}%</td>
+                <td class="amount">${topExec ? formatCurrency(topExec.compensation) : '-'}</td>
+                <td>${fraudBadges || '-'}</td>
+              </tr>
+            `;
+          }).join('');
+        }
+      } catch (e) {
+        console.error('Failed to load nonprofits:', e);
+        document.querySelector('#nonprofit-table tbody').innerHTML = 
+          `<tr><td colspan="8" class="error">Failed to load nonprofits: ${e.message}</td></tr>`;
+      }
+    }
+    
+    async function runTrustsScraper() {
+      const btn = document.getElementById('run-trusts-scraper-btn');
+      const key = getApiKey();
+      if (!key) {
+        alert('Admin login required to run scrapers. Go to Admin tab first.');
+        return;
+      }
+      
+      btn.disabled = true;
+      btn.textContent = '⏳ Running...';
+      
+      try {
+        const res = await fetch(`${API_BASE}/trigger/charitable-trusts`, {
+          method: 'POST',
+          headers: getAuthHeaders()
+        });
+        
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || `HTTP ${res.status}`);
+        }
+        
+        const data = await res.json();
+        alert(`Charitable Trusts scraper completed!\n\nTotal: ${data.stats.total}\nRefugee Providers: ${data.stats.refugeeProviders}\nWith fraud flags: ${data.stats.withFraudIndicators}`);
+        loadNonprofits();
+      } catch (e) {
+        alert('Scraper failed: ' + e.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '🔄 Refresh';
+      }
+    }
+    
+    // ==========================================
+    // End New Scraper Functions
     // ==========================================
 
     async function confirmInitDb() { if (prompt('Type RESET:')==='RESET') await fetch(`${API_BASE}/admin/init-db`, { method: 'POST', headers: getAuthHeaders() }); }

@@ -17,7 +17,12 @@
     "scrape": "tsx src/scrapers/run-all.ts",
     "scrape:gc": "tsx src/scrapers/governor-council.ts",
     "scrape:expenditure": "tsx src/scrapers/expenditure.ts",
-    "scrape:dhhs": "tsx src/scrapers/dhhs-contracts.ts"
+    "scrape:dhhs": "tsx src/scrapers/dhhs-contracts.ts",
+    "scrape:fac": "tsx src/scrapers/federal-audit-clearinghouse.ts",
+    "scrape:taggs": "tsx src/scrapers/hhs-taggs.ts",
+    "scrape:das": "tsx src/scrapers/das-bids.ts",
+    "scrape:sam": "tsx src/scrapers/sam-gov.ts",
+    "scrape:trusts": "tsx src/scrapers/charitable-trusts.ts"
   },
   "dependencies": {
     "@libsql/client": "^0.17.0",

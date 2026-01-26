@@ -6,6 +6,11 @@ import { initializeDb } from '../db/database.js';
 import { searchGCAgendas, saveScrapedData } from './governor-council.js';
 import { generateSampleExpenditures, filterImmigrantRelated, saveExpenditures } from './expenditure.js';
 import { scrapeDHHSContracts } from './dhhs-contracts.js';
+import { scrapeDASBids } from './das-bids.js';
+import { scrapeSAMGov } from './sam-gov.js';
+import { scrapeCharitableTrusts } from './charitable-trusts.js';
+import { scrapeFederalAuditClearinghouse } from './federal-audit-clearinghouse.js';
+import { scrapeHHSTAGGS } from './hhs-taggs.js';
 
 async function runAllScrapers() {
   console.log('='.repeat(60));
@@ -61,6 +66,89 @@ async function runAllScrapers() {
     console.log(`  - With fraud indicators: ${result.stats.withFraudIndicators}`);
   } catch (error) {
     console.error('Error in DHHS contracts scraper:', error);
+  }
+  
+  console.log();
+
+  // Run DAS Bids scraper
+  console.log('-'.repeat(60));
+  console.log('Running DAS Bid Board Scraper...');
+  console.log('-'.repeat(60));
+  
+  try {
+    const result = await scrapeDASBids();
+    console.log(`Processed ${result.stats.total} DAS bids`);
+    console.log(`  - Immigrant-related: ${result.stats.immigrantRelated}`);
+    console.log(`  - With fraud indicators: ${result.stats.withFraudIndicators}`);
+  } catch (error) {
+    console.error('Error in DAS bids scraper:', error);
+  }
+  
+  console.log();
+
+  // Run SAM.gov Federal Contracts scraper
+  console.log('-'.repeat(60));
+  console.log('Running SAM.gov Federal Contracts Scraper...');
+  console.log('-'.repeat(60));
+  
+  try {
+    const result = await scrapeSAMGov();
+    console.log(`Processed ${result.stats.total} federal awards`);
+    console.log(`  - Total federal amount: $${result.stats.totalFederalAmount.toLocaleString()}`);
+    console.log(`  - With fraud indicators: ${result.stats.withFraudIndicators}`);
+  } catch (error) {
+    console.error('Error in SAM.gov scraper:', error);
+  }
+  
+  console.log();
+
+  // Run Charitable Trusts scraper
+  console.log('-'.repeat(60));
+  console.log('Running NH Charitable Trusts Scraper...');
+  console.log('-'.repeat(60));
+  
+  try {
+    const result = await scrapeCharitableTrusts();
+    console.log(`Processed ${result.stats.total} nonprofit profiles`);
+    console.log(`  - Combined revenue: $${result.stats.totalRevenue.toLocaleString()}`);
+    console.log(`  - With fraud indicators: ${result.stats.withFraudIndicators}`);
+  } catch (error) {
+    console.error('Error in Charitable Trusts scraper:', error);
+  }
+  
+  console.log();
+
+  // Run Federal Audit Clearinghouse scraper
+  console.log('-'.repeat(60));
+  console.log('Running Federal Audit Clearinghouse Scraper...');
+  console.log('-'.repeat(60));
+  
+  try {
+    const result = await scrapeFederalAuditClearinghouse();
+    console.log(`Processed ${result.stats.total} audit reports`);
+    console.log(`  - With findings: ${result.stats.withFindings}`);
+    console.log(`  - Total questioned costs: $${result.stats.totalQuestionedCosts.toLocaleString()}`);
+    console.log(`  - With fraud indicators: ${result.stats.withFraudIndicators}`);
+  } catch (error) {
+    console.error('Error in FAC scraper:', error);
+  }
+  
+  console.log();
+
+  // Run HHS TAGGS scraper
+  console.log('-'.repeat(60));
+  console.log('Running HHS TAGGS Scraper...');
+  console.log('-'.repeat(60));
+  
+  try {
+    const result = await scrapeHHSTAGGS();
+    console.log(`Processed ${result.stats.total} HHS awards`);
+    console.log(`  - Refugee-related: ${result.stats.refugeeAwards}`);
+    console.log(`  - Childcare-related: ${result.stats.childcareAwards}`);
+    console.log(`  - Total amount: $${result.stats.totalAmount.toLocaleString()}`);
+    console.log(`  - With fraud indicators: ${result.stats.withFraudIndicators}`);
+  } catch (error) {
+    console.error('Error in HHS TAGGS scraper:', error);
   }
   
   console.log();
